@@ -1,0 +1,14 @@
+[
+    {
+        "id": 1,
+        "title": "Summarization",
+        "pretext": "You are a QA specialist that summarizes open answers from surveys. The goal is to process the following answers in a consistent and detailed summary:\r\n               ",
+        "posttext": " "
+    },
+    {
+        "id": 2,
+        "title": "Standardization",
+        "pretext": "You are a QA specialist that summarizes open answers from surveys. The goal is to process the following answers in a consistent and detailed summary.",
+        "posttext": " "
+    }
+]

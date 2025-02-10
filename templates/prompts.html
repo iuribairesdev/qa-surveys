@@ -1,0 +1,37 @@
+<!-- templates/prompts.html -->
+{% extends "base.html" %}
+
+{% block content %}
+    <div class="container mt-5">
+        <h1>Manage Prompts</h1>
+        
+        <!-- Display flash messages -->
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                <div class="alert alert-success">
+                    {{ messages[0] }}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <div class="mb-4">
+            <a href="{{ url_for('create_prompt') }}" class="btn btn-primary custom-btn">Create New Prompt</a>
+        </div>
+
+        <!-- List of Prompts -->
+        <ul class="list-group">
+            {% for prompt in prompts %}
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                    {{ prompt.title }}
+                    <div>
+                        <a href="{{ url_for('edit_prompt', prompt_id=prompt.id) }}" class="btn btn-warning btn-sm">Edit</a>
+                        <a href="{{ url_for('delete_prompt', prompt_id=prompt.id) }}" class="btn btn-danger btn-sm">Delete</a>
+                    </div>
+                </li>
+            {% else %}
+                <li class="list-group-item">No prompts found.</li>
+            {% endfor %}
+        </ul>
+    </div>
+
+{% endblock %}
