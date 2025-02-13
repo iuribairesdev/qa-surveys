@@ -30,10 +30,9 @@
               <button type="submit" name="cancel" class="btn btn-secondary" style="background:gray">Cancel</button>
               <div class="card mt-3">
                 <div class="card-body">
-                    <h5 class="card-title">Uploaded Contract</h5>
-                    <p><strong>PreText:</strong><br/> <pre>{{ contract.pretext }}</pre></p>
-                    <p><strong>Contract:</strong><br/><pre><textarea id="input_text" name="input_text" cols="100%" rows="100%">{{ contract.contracts_text }}</textarea></pre></p>
-                    <p><strong>PostText:</strong><br/> <pre>{{ contract.postext }}</pre></p>
+                    <h5 class="card-title">Uploaded Survey</h5>
+                    {{ content|safe }}
+                    
                 </div>
               </div>
             </div>

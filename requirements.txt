@@ -1,19 +1,6 @@
-dill
-ipdb
-pyperclip
 flask
 werkzeug
-openai==0.28
+openai==0.28.1
 python-dotenv
 hypercorn
-reportlab
-
 pandas
-numpy>=1.15.0
-setuptools==69.4.1
-thinc==8.3.2
-spacy==3.8.2
-en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0.tar.gz
-# es-core-news-sm @ https://github.com/explosion/spacy-models/releases/download/es_core_news_sm-3.5.0/es_core_news_sm-3.5.0.tar.gz
-# pt-core-news-sm @ https://github.com/explosion/spacy-models/releases/download/pt_core_news_sm-3.5.0/pt_core_news_sm-3.5.0.tar.gz
-

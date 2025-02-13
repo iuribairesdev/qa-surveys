@@ -87,6 +87,15 @@ def read_prompts():
         return json.load(file)
 
 
+def get_prompt(prompts, identifier):
+    """Retrieve a prompt based on ID or title."""
+    
+    for prompt in prompts:
+        if prompt.get('id') == identifier or prompt.get('title') == identifier:
+            return f"{prompt['pretext']}\n{prompt['posttext']}"
+    return "Prompt not found."
+
+
 # Function for prompt page
 def prompts_page():
     # If user is not logged in, redirect to login page

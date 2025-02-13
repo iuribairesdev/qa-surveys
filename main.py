@@ -1,19 +1,18 @@
 import os
-from flask import Flask, jsonify, request, redirect, render_template, url_for, session
+from flask import Flask, jsonify, request, redirect, send_file, render_template, url_for, session
 from werkzeug.utils import secure_filename
+import pandas as pd
 
-from utils import allowed_file, validate_string,  delete_files
+import openai
+import datetime
+from dotenv import load_dotenv
+from utils import allowed_file
 from settings import settings_page
 from auth import is_logged_in, login, logout
 from prompts import edit_prompt, create_prompt, read_prompts, delete_prompt, prompts_page
 
-
-
 # Initialize Flask application
 app = Flask(__name__)
-
-
-
 
 # Secret key to encrypt session data
 app.secret_key = os.environ.get('SECRET_KEY')
@@ -21,7 +20,6 @@ app.secret_key = os.environ.get('SECRET_KEY')
 # Define the folder to save uploaded files
 UPLOAD_FOLDER = './uploaded_files'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-
 
 PROMPT_FILE = 'prompts.json'
 
@@ -33,54 +31,56 @@ def preview():
         return redirect(url_for('login'))
     
     if request.method == 'POST':
-        # Get the list of files from the request
-        files = request.files.getlist('file')
-        
-        # If no files were uploaded
-        if not files or len(files) == 0:
-            return jsonify({"error": "No file part"}), 400
-        
-        prompt_id = request.form.get('prompt_id')
-         
-        # Read the chosen prompt
-        prompts = read_prompts()
-        prompt = next((p for p in prompts if str(p['id']) == prompt_id), None)
-        if not prompt:
-            return jsonify({"error": "Invalid prompt_id"}), 400
-        
-        pretext = prompt['pretext']
-        posttext = prompt['posttext'] + "Output must be organized in a table format, as in questions by answers."
- 
-        # Process each uploaded file
-        for f in files:
-            print('file', f)
-            # Skip if filename is empty
-            if f.filename == '':
-                continue
-            
-            if not allowed_file(f.filename):
-                return jsonify({"error": f"Invalid file type for {f.filename}. Please only upload CSV files!"}), 400
-            
-            # Secure and save the file
-            folder_path = os.path.join(app.config['UPLOAD_FOLDER'], 'cvs')
-            # Make sure the folder exists
-            if not os.path.exists(folder_path):
-                os.makedirs(folder_path)
-         
-            filename_only = secure_filename(f.filename).rsplit('.', 1)[0]
-            saved_path = os.path.join(folder_path, filename_only + '.cvs')
-            f.save(saved_path)
-            print(f'File {filename_only} successfully uploaded!')
+        # Check if the post request has the file part
+        if 'file' not in request.files:
+            return jsonify({"error": "No file part"}), 400        
 
+        file = request.files['file']
+        # If no file is selected
+        if file.filename == '':
+            return jsonify({"error": "No selected file"}), 400
+
+        if not allowed_file(file.filename):
+            return jsonify({"error": "Please, upload PDF files only!"}), 400
+
+        # If file is valid and has allowed extension
+        if file and allowed_file(file.filename):
+            if not os.path.exists(app.config['UPLOAD_FOLDER']):
+                os.makedirs(app.config['UPLOAD_FOLDER'])   
+            filename = secure_filename(file.filename).split(".")[0]
+            file.save(f"{os.path.join(app.config['UPLOAD_FOLDER'], filename)}.csv")
+            print('File successfully uploaded!')        
+            # Read CSV content
+            try:
+                df = pd.read_csv(f"{os.path.join(app.config['UPLOAD_FOLDER'], filename)}.csv")
+            except Exception as e:
+                return jsonify({"error": f"Error reading CSV file: {str(e)}"}), 400
+            # Convert dataframe to HTML table
+            table_html = df.to_html(classes='table table-striped', index=False)
         return render_template(
-            'preview.html',
-            
-            filename=", ".join(saved_filenames),  # or pass them as a list
-            prompt_id=prompt_id,
+            'preview.html'
+            ,filename=filename
+            ,content=table_html
         )
  
 
 
+def post_to_openai(text, model="gpt-4o", tokens=3000, temperature=0.2) -> None:
+    try:
+        response = openai.ChatCompletion.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": "You are a QA specialist that summarizes open answers from surveys."},
+                {"role": "user", "content": f"The goal is to process the following answers in a consistent and detailed summary:\n{text}"}
+            ],
+            max_tokens=tokens,  # how long the completion to be
+            temperature=temperature, # creativity level
+            # response_format={"type": "json_object"}
+        )        
+        return response.choices[0].message.content.strip()
+    except openai.error.OpenAIError as e:
+        print(f"An error occurred: {e}")
+        return f"An error occurred: {e}"
 
 # Route to display the file preview
 @app.route('/result', methods=['GET', 'POST'])
@@ -88,43 +88,71 @@ def result():
     # If user is not logged in, redirect to login page
     if not is_logged_in():
         return redirect(url_for('login'))
-
+    filename = ''
+    filepath = ''
     if request.method == 'POST':
-        # get file name from form
-        filename = request.form['filename']
-        print("filename ", filename)
-        
-        #get the client name from form
-        client_name = request.form['client_name']
-        client_name_list = client_name.split(',')
-        client_name = client_name.split(',')
-        first_client_name = client_name_list[0] if isinstance(client_name_list, list) else client_name
-        
-        # Get prompt_id from form
-        prompt_id = request.form['prompt_id']
-        prompts = read_prompts()
-        prompt = next((p for p in prompts if str(p['id']) == prompt_id), None)
-
-        
-      
         if 'confirm' in request.form:
-            data = request.form.get('input_text')
+            load_dotenv()
+            openai.api_key = os.environ.get("OPENAI_API_KEY1")
+            try:
+                filename = request.form['filename']
+                df = pd.read_csv(f"{os.path.join(app.config['UPLOAD_FOLDER'], filename)}.csv")
+                # Get open questions/answers
+                # df1 = df.iloc[2:,[7,8,10,11,12,16,18,20,22,24,25,27,28,29,30,32]]
 
-          
-      
-        elif 'cancel' in request.form:
+                # Normalize text columns to lowercase
+                text_columns = [
+                    "QA_Team_Composition", "Vendor_Names", "Manual_QAs_qty", "Automated_QAs_qty",
+                    "Developers_qty", "Backend_tools", "Frontend_Automation", "Mobile_Automation",
+                    "UnitTest_Automation", "Coverage_Testing_Tools", "Testing_Type", "Test_Management_Tools",
+                    "QA_metrics", "QA_Challenges", "QA_Suggestions", "QA_AI_Tools"
+                ]
+                # df.columns = text_columns
+                
+                # Step 4: Summarize each column
+                summarized_data = {}
+                for column in df.columns:
+                    print("COLUMN", column)
+                    combined_text = " ".join(str(item) for item in df[column].dropna() if isinstance(item, str))
+                    print('LEN COMB', len(combined_text.splitlines()))
+                    if (len(combined_text.splitlines())) > 0:
+                        summarized_data[column] = post_to_openai(combined_text)
+                print("FINISH RESUESTS")                  
+                # Step 5: Create a summary DataFrame
+                summary_df = pd.DataFrame([summarized_data])
+                # Step 6. Save to  csv file
+                filepath = os.path.join(
+                    app.config['UPLOAD_FOLDER']
+                    ,filename + '-summary-' + datetime.datetime.now().strftime("%Y%m%d") + '.csv')
+                
+                print('result',summary_df)
+                summary_df.to_csv(filepath, index="False")
+
+                result = summary_df.to_html(classes='table table-striped', index=False)
+            except Exception as e:
+                return jsonify({"error": f"Error reading CSV file: {str(e)}"}), 400
+
+
+
+
+        if 'cancel' in request.form:
             # Go back to the form
             return redirect(url_for('home'))
         elif 'download' in request.form:
-            summary = request.form['summary']
-            result = summary
-            return export_text(summary, "result_summary.docx", prompt['table_p'])
-            
-    else:
-        result = 'No response from ChatGPT '
-    # Apply pipe replacement
-    result = replace_pipe_with_line_break(result)
-    return render_template('result.html', page_title="Summary Result", result=result, filename=filename, prompt_id=prompt_id)
+            print("download")
+            filepath = request.form['filepath']
+            filename = request.form['filename']
+            return send_file(
+                filepath,
+                as_attachment=True,  # Set to False if you want to view in the browser
+                download_name=str(filename + '-summary.csv'),
+                mimetype="text/csv"
+            )
+
+        else:
+            result = 'No response from ChatGPT '
+    return render_template('result.html', page_title="Summary Result", result=result, filename=filename, filepath=filepath)
+
 
 
 ### 
@@ -177,4 +205,3 @@ def home():
 # Run the Flask app on localhost
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080, debug=True)
-    

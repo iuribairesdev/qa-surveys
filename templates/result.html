@@ -5,11 +5,9 @@
 
     <div class="container mt-5">
         <h1>{{ page_title }}</h1>
-        <form method="POST" class="mt-4">
-			
+        <form method="POST" class="mt-4">	
             <input type="hidden" id="filename" name="filename" value="{{ filename }}">                    
-            <input type="hidden" id="prompt_id" name="prompt_id" value="{{ prompt_id }}">
-			<input type="hidden" id="client_name" name="client_name" value="{{ client_name }}">			
+            <input type="hidden" id="filepath" name="filepath" value="{{ filepath }}">                    
             
             <div class="button-container" style=" justify-content: flex-start; ">
                 <button type="submit" name="cancel" class="btn btn-secondary" style="display: flex; justify-content: flex-end;">Go Back</button>
@@ -20,14 +18,14 @@
             </div>
             <div class="card mt-3">
                 <div class="card-body">
-                    <p><strong>Filename:</strong><br/>
-                    <h5 class="card-title">{{ filename }}</h5>
+                    <p><strong>Filename:</strong> {{ filename }}</p>
                     <p><strong>Summary:</strong><br/>
-                    <pre><textarea id="summary" name="summary" rows="100" cols="100" style="overflow-x: auto; white-space: pre-wrap;  word-wrap: break-word; font-size: 15px;"">{{ result }}</textarea></pre>
+                    <div>{{ result|safe }}</div>
                 </div>
             </div>
-
+            </br>
             <div class="button-container">
+
                 <button type="submit" name="cancel" class="btn btn-success" style="display: flex; justify-content: flex-end;">Finish</button>
                 <div style="width:20px">&nbsp;</div>
                 <button type="submit" name="download" class="btn btn-secondary" style="display: flex; justify-content: flex-end; background-color: #ee6035; border-color: #ee6035;"">Download</button>
