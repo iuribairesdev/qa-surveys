@@ -76,7 +76,8 @@ def post_to_openai(text, model="gpt-4o", tokens=3000, temperature=0.2) -> None:
             max_tokens=tokens,  # how long the completion to be
             temperature=temperature, # creativity level
             # response_format={"type": "json_object"}
-        )        
+        )      
+        print('response', response)  
         return response.choices[0].message.content.strip()
     except openai.error.OpenAIError as e:
         print(f"An error occurred: {e}")
@@ -149,8 +150,8 @@ def result():
                 mimetype="text/csv"
             )
 
-        else:
-            result = 'No response from ChatGPT '
+    else:
+        result = 'Bad method request '
     return render_template('result.html', page_title="Summary Result", result=result, filename=filename, filepath=filepath)
 
 
