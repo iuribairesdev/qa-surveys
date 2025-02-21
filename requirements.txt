@@ -1,6 +1,6 @@
+authlib
 flask
-werkzeug
 openai==0.28.1
-python-dotenv
-hypercorn
 pandas
+pandas
+python-dotenv

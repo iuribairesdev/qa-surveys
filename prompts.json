@@ -7,7 +7,7 @@
     },
     {
         "id": 2,
-        "title": "Standardization",
+        "title": "Categorization",
         "pretext": "You are a QA specialist that summarizes open answers from surveys. The goal is to process the following answers in a consistent and detailed summary.",
         "posttext": " "
     }

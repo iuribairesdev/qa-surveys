@@ -19,7 +19,7 @@ def login():
 
         # Check if the credentials are valid
         if username in users and users[username] == password:
-            session['user'] = username
+            session['user'] = {"name": username, "email": username}
             return redirect(url_for('home'))
         else:
             error = "Invalid credentials. Please try again."

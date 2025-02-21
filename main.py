@@ -10,9 +10,27 @@ from utils import allowed_file
 from settings import settings_page
 from auth import is_logged_in, login, logout
 from prompts import edit_prompt, create_prompt, read_prompts, delete_prompt, prompts_page
+from authlib.integrations.flask_client import OAuth
 
 # Initialize Flask application
 app = Flask(__name__)
+
+# Google OAuth Configuration
+oauth = OAuth(app)
+app.config['GOOGLE_CLIENT_ID'] = os.environ.get("GOOGLE_CLIENT_ID")
+app.config['GOOGLE_CLIENT_SECRET'] = os.environ.get("GOOGLE_CLIENT_SECRET")
+app.config['GOOGLE_DISCOVERY_URL'] = "https://accounts.google.com/.well-known/openid-configuration"
+
+google = oauth.register(
+    name="google",
+    client_id=app.config["GOOGLE_CLIENT_ID"],
+    client_secret=app.config["GOOGLE_CLIENT_SECRET"],
+    server_metadata_url=app.config["GOOGLE_DISCOVERY_URL"],
+    client_kwargs={"scope": "openid email profile"},
+)
+
+
+
 
 # Secret key to encrypt session data
 app.secret_key = os.environ.get('SECRET_KEY')
@@ -41,7 +59,7 @@ def preview():
             return jsonify({"error": "No selected file"}), 400
 
         if not allowed_file(file.filename):
-            return jsonify({"error": "Please, upload PDF files only!"}), 400
+            return jsonify({"error": "Please, upload CSV files only!"}), 400
 
         # If file is valid and has allowed extension
         if file and allowed_file(file.filename):
@@ -57,9 +75,18 @@ def preview():
                 return jsonify({"error": f"Error reading CSV file: {str(e)}"}), 400
             # Convert dataframe to HTML table
             table_html = df.to_html(classes='table table-striped', index=False)
+
+        # Read the chosen prompt
+        prompt_id = request.form.get('prompt_id') 
+        prompts = read_prompts()
+        prompt = next((p for p in prompts if str(p['id']) == prompt_id), None)
+        if not prompt:
+            return jsonify({"error": "Invalid prompt_id"}), 400
+       
         return render_template(
             'preview.html'
             ,filename=filename
+            ,prompt_id=prompt_id
             ,content=table_html
         )
  
@@ -83,6 +110,48 @@ def post_to_openai(text, model="gpt-4o", tokens=3000, temperature=0.2) -> None:
         print(f"An error occurred: {e}")
         return f"An error occurred: {e}"
 
+
+
+def categorization(input_file):
+
+def summarization(input_file):
+    load_dotenv()
+    openai.api_key = os.environ.get("OPENAI_API_KEY1")
+    try:
+        df = pd.read_csv(f"{os.path.join(app.config['UPLOAD_FOLDER'], input_file)}.csv")
+        # Get open questions/answers
+        # df1 = df.iloc[2:,[7,8,10,11,12,16,18,20,22,24,25,27,28,29,30,32]]
+
+        # Normalize text columns to lowercase
+        text_columns = [
+            "QA_Team_Composition", "Vendor_Names", "Manual_QAs_qty", "Automated_QAs_qty",
+            "Developers_qty", "Backend_tools", "Frontend_Automation", "Mobile_Automation",
+            "UnitTest_Automation", "Coverage_Testing_Tools", "Testing_Type", "Test_Management_Tools",
+            "QA_metrics", "QA_Challenges", "QA_Suggestions", "QA_AI_Tools"
+        ]
+        # df.columns = text_columns
+        
+        # Step 4: Summarize each column
+        summarized_data = {}
+        for column in df.columns:
+            print("COLUMN", column)
+            combined_text = " ".join(str(item) for item in df[column].dropna() if isinstance(item, str))
+            print('LEN COMB', len(combined_text.splitlines()))
+            if (len(combined_text.splitlines())) > 0:
+                summarized_data[column] = post_to_openai(combined_text)
+        print("FINISH RESUESTS")                  
+        # Step 5: Create a summary DataFrame
+        summary_df = pd.DataFrame([summarized_data])
+        # Step 6. Save to  csv file
+        filename = filename + '-summary-' + datetime.datetime.now().strftime("%Y%m%d") + '.csv'
+        filepath = os.path.join(
+            app.config['UPLOAD_FOLDER']
+            ,filename)                
+        summary_df.to_csv(filepath, index="False")
+    except Exception as e:
+        return jsonify({"error": f"Error reading CSV file: {str(e)}"}), 400
+
+
 # Route to display the file preview
 @app.route('/result', methods=['GET', 'POST'])
 def result():
@@ -90,49 +159,22 @@ def result():
     if not is_logged_in():
         return redirect(url_for('login'))
     filename = ''
-    filepath = ''
+
     if request.method == 'POST':
+        
         if 'confirm' in request.form:
-            load_dotenv()
-            openai.api_key = os.environ.get("OPENAI_API_KEY1")
-            try:
-                filename = request.form['filename']
-                df = pd.read_csv(f"{os.path.join(app.config['UPLOAD_FOLDER'], filename)}.csv")
-                # Get open questions/answers
-                # df1 = df.iloc[2:,[7,8,10,11,12,16,18,20,22,24,25,27,28,29,30,32]]
+            # Read the chosen prompt
+            prompt_id = request.form.get('prompt_id') 
+            prompts = read_prompts()
+            prompt = next((p for p in prompts if str(p['id']) == prompt_id), None)
+            if not prompt:
+                return jsonify({"error": "Invalid prompt_id"}), 400
+            print('prompt', prompt_id)
 
-                # Normalize text columns to lowercase
-                text_columns = [
-                    "QA_Team_Composition", "Vendor_Names", "Manual_QAs_qty", "Automated_QAs_qty",
-                    "Developers_qty", "Backend_tools", "Frontend_Automation", "Mobile_Automation",
-                    "UnitTest_Automation", "Coverage_Testing_Tools", "Testing_Type", "Test_Management_Tools",
-                    "QA_metrics", "QA_Challenges", "QA_Suggestions", "QA_AI_Tools"
-                ]
-                # df.columns = text_columns
-                
-                # Step 4: Summarize each column
-                summarized_data = {}
-                for column in df.columns:
-                    print("COLUMN", column)
-                    combined_text = " ".join(str(item) for item in df[column].dropna() if isinstance(item, str))
-                    print('LEN COMB', len(combined_text.splitlines()))
-                    if (len(combined_text.splitlines())) > 0:
-                        summarized_data[column] = post_to_openai(combined_text)
-                print("FINISH RESUESTS")                  
-                # Step 5: Create a summary DataFrame
-                summary_df = pd.DataFrame([summarized_data])
-                # Step 6. Save to  csv file
-                filepath = os.path.join(
-                    app.config['UPLOAD_FOLDER']
-                    ,filename + '-summary-' + datetime.datetime.now().strftime("%Y%m%d") + '.csv')
-                
-                print('result',summary_df)
-                summary_df.to_csv(filepath, index="False")
-
-                result = summary_df.to_html(classes='table table-striped', index=False)
-            except Exception as e:
-                return jsonify({"error": f"Error reading CSV file: {str(e)}"}), 400
-
+            if prompt('title') == 'Categorization':
+                result=categorization()
+            elif prompt('title') == 'Summarization':
+                result=summarization()
 
 
 
@@ -141,10 +183,9 @@ def result():
             return redirect(url_for('home'))
         elif 'download' in request.form:
             print("download")
-            filepath = request.form['filepath']
             filename = request.form['filename']
             return send_file(
-                filepath,
+                os.path.join(app.config['UPLOAD_FOLDER'], filename),
                 as_attachment=True,  # Set to False if you want to view in the browser
                 download_name=str(filename + '-summary.csv'),
                 mimetype="text/csv"
@@ -152,7 +193,7 @@ def result():
 
     else:
         result = 'Bad method request '
-    return render_template('result.html', page_title="Summary Result", result=result, filename=filename, filepath=filepath)
+    return render_template('result.html', page_title="Summary Result", result=result, filename=filename)
 
 
 
@@ -186,6 +227,21 @@ app.add_url_rule('/settings', 'settings', settings_page, methods=['GET', 'POST']
 
 # Route for the login page
 app.add_url_rule('/login', 'login', login, methods=['GET', 'POST'])
+
+
+#app.add_url_rule('/google_login', 'google_login', methods=['GET', 'POST'])
+@app.route('/google_login', methods=['GET', 'POST'])
+def google_login():
+    return google.authorize_redirect(url_for("auth_callback", _external=True))
+
+#app.add_url_rule('/auth_callback', 'auth_callback', methods=['GET', 'POST'])
+@app.route('/auth_callback', methods=['GET', 'POST'])
+def auth_callback():
+    token = google.authorize_access_token()
+    user_info = token.get("userinfo")  # Get user info
+    session["user"] = user_info  # Save user info in session
+    return redirect(url_for("home"))
+
 
 # Route for logging out
 app.add_url_rule('/logout', 'logout', logout)

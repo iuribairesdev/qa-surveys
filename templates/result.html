@@ -7,30 +7,25 @@
         <h1>{{ page_title }}</h1>
         <form method="POST" class="mt-4">	
             <input type="hidden" id="filename" name="filename" value="{{ filename }}">                    
-            <input type="hidden" id="filepath" name="filepath" value="{{ filepath }}">                    
+            <input type="hidden" id="result" name="result" value="{{ result }}">                    
             
             <div class="button-container" style=" justify-content: flex-start; ">
                 <button type="submit" name="cancel" class="btn btn-secondary" style="display: flex; justify-content: flex-end;">Go Back</button>
                 <div style="width:20px">&nbsp;</div>
                 <button type="submit" name="download" class="btn btn-secondary" style="display: flex; justify-content: flex-end; background-color: #ee6035; border-color: #ee6035;">Download</button>
-                <div style="width:20px">&nbsp;</div>
-                <button type="submit" name="save" class="btn btn-secondary" style="display: flex; justify-content: flex-end; background-color: blue; border-color: blue;">Save</button>
             </div>
             <div class="card mt-3">
                 <div class="card-body">
                     <p><strong>Filename:</strong> {{ filename }}</p>
                     <p><strong>Summary:</strong><br/>
-                    <div>{{ result|safe }}</div>
+                    <div>{{ result.to_html(classes='table table-striped', index=False)|safe }}</div>
                 </div>
             </div>
             </br>
             <div class="button-container">
-
                 <button type="submit" name="cancel" class="btn btn-success" style="display: flex; justify-content: flex-end;">Finish</button>
                 <div style="width:20px">&nbsp;</div>
                 <button type="submit" name="download" class="btn btn-secondary" style="display: flex; justify-content: flex-end; background-color: #ee6035; border-color: #ee6035;"">Download</button>
-                <div style="width:20px">&nbsp;</div>
-                <button type="submit" name="save" class="btn btn-secondary" style="display: flex; justify-content: flex-end; background-color: blue; border-color: blue;">Save</button>
             </div>
         </form>
      
