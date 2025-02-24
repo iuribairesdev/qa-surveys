@@ -3,7 +3,6 @@ from flask import Flask, jsonify, request, redirect, send_file, render_template,
 from werkzeug.utils import secure_filename
 import pandas as pd
 
-import openai
 import datetime
 from dotenv import load_dotenv
 from utils import allowed_file
@@ -11,6 +10,22 @@ from settings import settings_page
 from auth import is_logged_in, login, logout
 from prompts import edit_prompt, create_prompt, read_prompts, delete_prompt, prompts_page
 from authlib.integrations.flask_client import OAuth
+
+# Summarization
+import openai
+
+
+# Categorization
+import re
+import nltk
+from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer
+
+# Download necessary NLTK data
+nltk.download('stopwords')
+nltk.download('wordnet')
+nltk.download('punkt_tab')
+
 
 # Initialize Flask application
 app = Flask(__name__)
@@ -111,10 +126,39 @@ def post_to_openai(text, model="gpt-4o", tokens=3000, temperature=0.2) -> None:
         return f"An error occurred: {e}"
 
 
+# Preprocessing Function
+def preprocess_text(text):
+    # Handle numeric responses
+    if isinstance(text, (int, float)):
+        return str(text)  # Convert numeric response to string
+
+    if not isinstance(text, str):
+        return ""  # Return empty string for invalid types
+
+    # Convert to lowercase
+    text = text.lower()
+    # Remove punctuation and special characters
+    text = re.sub(r'[^\w\s]', '', text)
+    # Tokenize and remove stopwords
+    tokens = nltk.word_tokenize(text)
+    stop_words = set(stopwords.words('english'))
+    tokens = [word for word in tokens if word not in stop_words]
+    # Lemmatize tokens
+    lemmatizer = WordNetLemmatizer()
+    tokens = [lemmatizer.lemmatize(word) for word in tokens]
+    return " ".join(tokens)
 
 def categorization(input_file):
+    print("categorization", input_file)
+    df1 = pd.read_csv(f"{os.path.join(app.config['UPLOAD_FOLDER'], input_file)}.csv")
+    df2 = pd.DataFrame()
+    for col in df1.columns:
+        # Apply cleaning
+        df2[col] = df1[col].apply(preprocess_text)
+    return df2
 
 def summarization(input_file):
+    print(input_file)
     load_dotenv()
     openai.api_key = os.environ.get("OPENAI_API_KEY1")
     try:
@@ -161,36 +205,28 @@ def result():
     filename = ''
 
     if request.method == 'POST':
-        
+        filename = request.form['filename']
         if 'confirm' in request.form:
             # Read the chosen prompt
-            prompt_id = request.form.get('prompt_id') 
+            prompt_id = request.form['prompt_id']
             prompts = read_prompts()
             prompt = next((p for p in prompts if str(p['id']) == prompt_id), None)
             if not prompt:
                 return jsonify({"error": "Invalid prompt_id"}), 400
-            print('prompt', prompt_id)
-
-            if prompt('title') == 'Categorization':
-                result=categorization()
-            elif prompt('title') == 'Summarization':
-                result=summarization()
-
-
-
+            if prompt['title'] == 'Categorization':
+                result=categorization(filename)
+            elif prompt['title'] == 'Summarization':
+                result=summarization(filename)
         if 'cancel' in request.form:
             # Go back to the form
             return redirect(url_for('home'))
         elif 'download' in request.form:
-            print("download")
-            filename = request.form['filename']
             return send_file(
                 os.path.join(app.config['UPLOAD_FOLDER'], filename),
                 as_attachment=True,  # Set to False if you want to view in the browser
                 download_name=str(filename + '-summary.csv'),
                 mimetype="text/csv"
             )
-
     else:
         result = 'Bad method request '
     return render_template('result.html', page_title="Summary Result", result=result, filename=filename)
