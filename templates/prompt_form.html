@@ -11,11 +11,18 @@
                 <input required type="text" class="form-control" id="title" name="title" value="{{ prompt.title if prompt else '' }}"">
             </div>
             <div class="mb-3">
-                <label for="pretext" class="form-label">PreText</label>
-                <textarea required class="form-control" id="pretext" name="pretext" rows="4">{{ prompt.pretext if prompt else '' }}</textarea>
+                <label for="pretext" class="form-label">Description</label>
+                <textarea required class="form-control" id="pretext" name="pretext" rows="4">What the prompt does</textarea>
             </div>
             <div class="mb-3">
-                <label for="posttext" class="form-label">PostText</label>
+                <label for="pretext" class="form-label">PreText</label><br>
+                <span class="helper-text">[i]&nbsp;</span><span>Definition of persona, goals and methods to the AI model processsing.</span>
+                <textarea required class="form-control" id="pretext" name="pretext" rows="4">{{ prompt.pretext if prompt else '' }}</textarea>
+    
+            </div>
+            <div class="mb-3">
+                <label for="posttext" class="form-label">PostText</label><br>
+                <span class="helper-text">[i]&nbsp;</span><span>Definition of persona, goals and methods to the AI model processsing.</span>
                 <textarea required class="form-control" id="posttext" name="posttext" rows="4">{{ prompt.posttext if prompt else '' }}</textarea>
             </div>
             <div class="mb-3">

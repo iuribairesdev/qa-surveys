@@ -56,6 +56,11 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 PROMPT_FILE = 'prompts.json'
 
+
+
+## create mmutliple prompts funcionality as a stage before previw, so the user can select the prmopt and columns respectively
+
+
 # Route to display the file preview
 @app.route('/preview', methods=['POST'])
 def preview():
@@ -107,7 +112,8 @@ def preview():
  
 
 
-def post_to_openai(text, model="gpt-4o", tokens=3000, temperature=0.2) -> None:
+# def post_to_openai(text, model="gpt-4o", tokens=3000, temperature=0.2) -> None:
+def post_to_openai(text, model="gpt-4o", tokens=3000, temperature=0.2):
     try:
         response = openai.ChatCompletion.create(
             model=model,
@@ -148,6 +154,15 @@ def preprocess_text(text):
     tokens = [lemmatizer.lemmatize(word) for word in tokens]
     return " ".join(tokens)
 
+
+def save_csv(df, filename):
+    # Step 6. Save to  csv file
+    filename = filename + '-summary-' + datetime.datetime.now().strftime("%Y%m%d") + '.csv'
+    filepath = os.path.join(
+        app.config['UPLOAD_FOLDER']
+        ,filename)                
+    df.to_csv(filepath, index="False")
+    
 def categorization(input_file):
     print("categorization", input_file)
     df1 = pd.read_csv(f"{os.path.join(app.config['UPLOAD_FOLDER'], input_file)}.csv")
@@ -155,7 +170,9 @@ def categorization(input_file):
     for col in df1.columns:
         # Apply cleaning
         df2[col] = df1[col].apply(preprocess_text)
+    save_csv(df2, input_file)  
     return df2
+
 
 def summarization(input_file):
     print(input_file)
@@ -186,15 +203,12 @@ def summarization(input_file):
         print("FINISH RESUESTS")                  
         # Step 5: Create a summary DataFrame
         summary_df = pd.DataFrame([summarized_data])
-        # Step 6. Save to  csv file
-        filename = filename + '-summary-' + datetime.datetime.now().strftime("%Y%m%d") + '.csv'
-        filepath = os.path.join(
-            app.config['UPLOAD_FOLDER']
-            ,filename)                
-        summary_df.to_csv(filepath, index="False")
+        save_csv(summary_df, input_file)
+        print('TYPE', type(summary_df))
+        return summary_df        
     except Exception as e:
         return jsonify({"error": f"Error reading CSV file: {str(e)}"}), 400
-
+   
 
 # Route to display the file preview
 @app.route('/result', methods=['GET', 'POST'])
@@ -216,7 +230,45 @@ def result():
             if prompt['title'] == 'Categorization':
                 result=categorization(filename)
             elif prompt['title'] == 'Summarization':
-                result=summarization(filename)
+                # result=summarization(filename)
+
+                load_dotenv()
+                openai.api_key = os.environ.get("OPENAI_API_KEY1")
+                try:
+                    df = pd.read_csv(f"{os.path.join(app.config['UPLOAD_FOLDER'], filename)}.csv")
+                    # Get open questions/answers
+                    # df1 = df.iloc[2:,[7,8,10,11,12,16,18,20,22,24,25,27,28,29,30,32]]
+
+                    # Normalize text columns to lowercase
+                    text_columns = [
+                        "QA_Team_Composition", "Vendor_Names", "Manual_QAs_qty", "Automated_QAs_qty",
+                        "Developers_qty", "Backend_tools", "Frontend_Automation", "Mobile_Automation",
+                        "UnitTest_Automation", "Coverage_Testing_Tools", "Testing_Type", "Test_Management_Tools",
+                        "QA_metrics", "QA_Challenges", "QA_Suggestions", "QA_AI_Tools"
+                    ]
+                    # df.columns = text_columns
+                    
+                    # Step 4: Summarize each column
+                    summarized_data = {}
+                    for column in df.columns:
+                        print("COLUMN", column)
+                        combined_text = " ".join(str(item) for item in df[column].dropna() if isinstance(item, str))
+                        print('LEN COMB', len(combined_text.splitlines()))
+                        if (len(combined_text.splitlines())) > 0:
+                            summarized_data[column] = post_to_openai(combined_text)
+                    print("FINISH RESUESTS")                  
+                    # Step 5: Create a summary DataFrame
+                    result = pd.DataFrame([summarized_data])
+                    save_csv(result, filename)
+                    print('TYPE', type(result))
+                    
+                except Exception as e:
+                    return jsonify({"error": f"Error reading CSV file: {str(e)}"}), 400
+
+
+
+
+                print('summarization')
         if 'cancel' in request.form:
             # Go back to the form
             return redirect(url_for('home'))
@@ -229,7 +281,9 @@ def result():
             )
     else:
         result = 'Bad method request '
-    return render_template('result.html', page_title="Summary Result", result=result, filename=filename)
+    print(type(result))
+    result_html = result.to_html(classes='table table-striped', index=False)
+    return render_template('result.html', page_title="Summary Result", result=result_html, filename=filename)
 
 
 

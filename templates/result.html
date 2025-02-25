@@ -18,7 +18,7 @@
                 <div class="card-body">
                     <p><strong>Filename:</strong> {{ filename }}</p>
                     <p><strong>Summary:</strong><br/>
-                    <div>{{ result.to_html(classes='table table-striped', index=False)|safe }}</div>
+                    <div>{{ result_html|safe }}</div>
                 </div>
             </div>
             </br>
