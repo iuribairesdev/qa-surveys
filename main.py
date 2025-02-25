@@ -103,6 +103,19 @@ def preview():
         if not prompt:
             return jsonify({"error": "Invalid prompt_id"}), 400
        
+
+        if prompt['title'] == 'Multiple Prompts':
+            print('prompts', prompts)
+            columns = df.columns.tolist()
+
+            return render_template(
+                'preview_multiple.html'
+                ,filename=filename
+                ,prompt_id=prompt_id
+                ,columns=columns
+                ,prompts=prompts
+                ,content=table_html
+            )
         return render_template(
             'preview.html'
             ,filename=filename
@@ -175,7 +188,6 @@ def categorization(input_file):
 
 
 def summarization(input_file):
-    print(input_file)
     load_dotenv()
     openai.api_key = os.environ.get("OPENAI_API_KEY1")
     try:
@@ -202,10 +214,10 @@ def summarization(input_file):
                 summarized_data[column] = post_to_openai(combined_text)
         print("FINISH RESUESTS")                  
         # Step 5: Create a summary DataFrame
-        summary_df = pd.DataFrame([summarized_data])
-        save_csv(summary_df, input_file)
-        print('TYPE', type(summary_df))
-        return summary_df        
+        df = pd.DataFrame([summarized_data])
+        save_csv(df, input_file) 
+
+        return df.to_html(classes='table table-striped', index=False)
     except Exception as e:
         return jsonify({"error": f"Error reading CSV file: {str(e)}"}), 400
    
@@ -230,45 +242,7 @@ def result():
             if prompt['title'] == 'Categorization':
                 result=categorization(filename)
             elif prompt['title'] == 'Summarization':
-                # result=summarization(filename)
-
-                load_dotenv()
-                openai.api_key = os.environ.get("OPENAI_API_KEY1")
-                try:
-                    df = pd.read_csv(f"{os.path.join(app.config['UPLOAD_FOLDER'], filename)}.csv")
-                    # Get open questions/answers
-                    # df1 = df.iloc[2:,[7,8,10,11,12,16,18,20,22,24,25,27,28,29,30,32]]
-
-                    # Normalize text columns to lowercase
-                    text_columns = [
-                        "QA_Team_Composition", "Vendor_Names", "Manual_QAs_qty", "Automated_QAs_qty",
-                        "Developers_qty", "Backend_tools", "Frontend_Automation", "Mobile_Automation",
-                        "UnitTest_Automation", "Coverage_Testing_Tools", "Testing_Type", "Test_Management_Tools",
-                        "QA_metrics", "QA_Challenges", "QA_Suggestions", "QA_AI_Tools"
-                    ]
-                    # df.columns = text_columns
-                    
-                    # Step 4: Summarize each column
-                    summarized_data = {}
-                    for column in df.columns:
-                        print("COLUMN", column)
-                        combined_text = " ".join(str(item) for item in df[column].dropna() if isinstance(item, str))
-                        print('LEN COMB', len(combined_text.splitlines()))
-                        if (len(combined_text.splitlines())) > 0:
-                            summarized_data[column] = post_to_openai(combined_text)
-                    print("FINISH RESUESTS")                  
-                    # Step 5: Create a summary DataFrame
-                    result = pd.DataFrame([summarized_data])
-                    save_csv(result, filename)
-                    print('TYPE', type(result))
-                    
-                except Exception as e:
-                    return jsonify({"error": f"Error reading CSV file: {str(e)}"}), 400
-
-
-
-
-                print('summarization')
+                result=summarization(filename)
         if 'cancel' in request.form:
             # Go back to the form
             return redirect(url_for('home'))
@@ -281,9 +255,8 @@ def result():
             )
     else:
         result = 'Bad method request '
-    print(type(result))
-    result_html = result.to_html(classes='table table-striped', index=False)
-    return render_template('result.html', page_title="Summary Result", result=result_html, filename=filename)
+    print('result', result)
+    return render_template('result.html', page_title="Summary Result", result_html=result, filename=filename)
 
 
 

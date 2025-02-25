@@ -1,0 +1,142 @@
+<!-- templates/home.html -->
+{% extends "base.html" %}
+
+{% block content %}
+
+    <div class="container mt-5">
+        <center>
+          <div id="loader" class="loading-container">
+          <span class="loading-text">Loading</span>
+          <div class="loading-dots">
+            <div class="dot"></div>
+            <div class="dot"></div>
+            <div class="dot"></div>
+          </div>
+        </div>
+      </center>
+       
+        <form id="previewForm" action="{{ url_for('result')}}" method="POST" class="mt-4">
+            <input type="hidden" id="filename" name="filename" value="{{ filename }}">
+            <input type="hidden" id="prompt_id" name="prompt_id" value="{{ prompt_id }}">
+      
+            <h1>Preview</h1> 
+
+            <h3>Column Prompt Mapping
+              <span id="toggleFormBtn" class="ms-2" style="cursor: pointer; font-size: 1.5rem;">
+                <i id="toggleIcon" class="bi bi-plus-circle" ></i>
+              </span>
+            </h3>
+            <!-- Collapsible Form Content -->
+            <div id="collapsibleForm" class="collapse">
+              
+              <div class="card mt-3">
+                <div class="card-body">
+
+
+                  <div class="table-responsive">
+                    <div class="row fw-bold border-bottom py-2">
+                      <div class="col-4">Column Name</div>
+                      <div class="col-3">Map To</div>
+                      <div class="col-5">*</div>
+                    </div>
+                    {% for col in columns %}
+                    <div class="row py-2 align-items-center">
+                      <div class="col-4">{{ col }}</div>
+                      <div class="col-3">
+
+                            <select class="form-control" id="prompt_id" name="prompt_id" onchange="toggleInput(this)" required>
+                              <option value="" disabled selected>No prompt selected...</option>
+                              {% for prompt in prompts %}
+                                  <option value="{{ prompt.id }}">{{ prompt.title }}</option>
+                              {% endfor %}                          
+                              <option value="other">Other</option>
+                            </select>                            
+                            <input type="text" name="custom_mapping[{{ col }}]" style="display:none;">
+                      </div>
+                      <div class="col-5">
+                        <textarea name="custom_mapping[{{ col }}]" class="form-control" style="display:none;" rows="2" placeholder="Enter custom value"></textarea>
+                      </div>
+                    </div>
+                  {% endfor %}
+                  </div>              
+                </div>
+              </div>
+                <br>
+                <button type="submit" name="confirm" class="btn btn-success">Confirm and Process</button> &nbsp; &nbsp;
+                <button type="submit" name="cancel" class="btn btn-secondary" style="background:gray">Cancel</button>
+
+
+
+              <div class="card mt-3">
+                <div class="card-body">
+                    <h5 class="card-title">Uploaded Survey</h5>
+                    {{ content|safe }}
+                    
+                </div>
+              </div>
+            </div>
+            <div class="button-container">
+                <button type="submit" name="confirm" class="btn btn-success">Confirm and Process</button>
+                <div style="width:20px">&nbsp;</div>
+                <button type="submit" name="cancel" class="btn btn-secondary" style="background:gray">Cancel</button>
+            </div>
+        </form>
+        <script>
+            const loader = document.getElementById('loader');
+            const form = document.getElementById('previewForm');
+            const toggleButton = document.getElementById('toggleFormBtn');
+            const toggleIcon = document.getElementById('toggleIcon');
+            const collapsibleForm = document.getElementById('collapsibleForm');
+  
+            // Initialize Bootstrap tooltips
+            var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl);
+            });
+
+            // Show loader when the form is submitted
+            form.addEventListener('submit', () => {
+              loader.style.display = 'block';
+              form.style.display = 'none';
+            });
+        
+            // Ensure loader is hidden once the /result page fully loads
+            window.addEventListener('load', () => {
+              loader.style.display = 'none';
+            });
+
+
+            // Toggle Expand/Collapse
+            toggleButton.addEventListener('click', () => {
+              if (collapsibleForm.classList.contains('show')) {
+                  collapsibleForm.classList.remove('show');
+                  toggleIcon.classList.replace('bi-dash-circle', 'bi-plus-circle');
+                  toggleButton.setAttribute('title', 'Click to expand');
+    
+              } else {
+                  collapsibleForm.classList.add('show');
+                  toggleIcon.classList.replace('bi-plus-circle', 'bi-dash-circle');
+                  toggleButton.setAttribute('title', 'Click to collapse');
+        
+ 
+              }
+
+              // Refresh tooltip to update the message
+              var tooltipInstance = bootstrap.Tooltip.getInstance(toggleButton);
+              tooltipInstance.dispose();
+              tooltipInstance = new bootstrap.Tooltip(toggleButton);
+
+            });
+
+
+
+
+            function toggleInput(select) {
+              var textarea = select.parentElement.nextElementSibling.querySelector('textarea');
+              textarea.style.display = select.value === 'other' ? 'block' : 'none';
+            }
+
+          </script>
+
+    </div>
+{% endblock %}    
