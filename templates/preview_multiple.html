@@ -44,14 +44,14 @@
                       <div class="col-4">{{ col }}</div>
                       <div class="col-3">
 
-                            <select class="form-control" id="prompt_id" name="prompt_id" onchange="toggleInput(this)" required>
+                            <select class="form-control" id="custom_prompt_id" name="custom_prompt_id" onchange="toggleInput(this)" required>
                               <option value="" disabled selected>No prompt selected...</option>
                               {% for prompt in prompts %}
                                   <option value="{{ prompt.id }}">{{ prompt.title }}</option>
                               {% endfor %}                          
                               <option value="other">Other</option>
                             </select>                            
-                            <input type="text" name="custom_mapping[{{ col }}]" style="display:none;">
+                        
                       </div>
                       <div class="col-5">
                         <textarea name="custom_mapping[{{ col }}]" class="form-control" style="display:none;" rows="2" placeholder="Enter custom value"></textarea>

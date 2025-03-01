@@ -187,6 +187,11 @@ def categorization(input_file):
     return df2
 
 
+
+def multiple_prompts(input_file, columns):
+    print("Multiple Prompts")
+
+
 def summarization(input_file):
     load_dotenv()
     openai.api_key = os.environ.get("OPENAI_API_KEY1")
@@ -243,6 +248,11 @@ def result():
                 result=categorization(filename)
             elif prompt['title'] == 'Summarization':
                 result=summarization(filename)
+            elif prompt['title'] == 'Multiple Prompts':
+                custom_prompt_id = request.form['custom_prompt_id']
+                custom_mapping = request.form['custom_mapping']
+                result=multiple_prompts(filename, custom_prompt_id, custom_mapping)
+                
         if 'cancel' in request.form:
             # Go back to the form
             return redirect(url_for('home'))

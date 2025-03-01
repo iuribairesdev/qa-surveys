@@ -6,7 +6,7 @@ runtime_config:
   python_version: 3
 
 # service: document-summarization
-service_account: billingvalidation-439717@appspot.gserviceaccount.com
+service_account: qasurveys@appspot.gserviceaccount.com
 
 
 readiness_check:
