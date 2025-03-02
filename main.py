@@ -1,20 +1,16 @@
 import os
-from flask import Flask, jsonify, request, redirect, send_file, render_template, url_for, session
+from flask import Flask, session, jsonify, request, redirect, send_file, render_template, url_for
+from flask_session import Session
 from werkzeug.utils import secure_filename
 import pandas as pd
-
 import datetime
 from dotenv import load_dotenv
 from utils import allowed_file
 from settings import settings_page
-from auth import is_logged_in, login, logout
+from auth import is_logged_in, login, logout, init_oauth, auth_bp, google_login,  auth_callback
 from prompts import edit_prompt, create_prompt, read_prompts, delete_prompt, prompts_page
-from authlib.integrations.flask_client import OAuth
-
 # Summarization
 import openai
-
-
 # Categorization
 import re
 import nltk
@@ -29,26 +25,16 @@ nltk.download('punkt_tab')
 
 # Initialize Flask application
 app = Flask(__name__)
-
-# Google OAuth Configuration
-oauth = OAuth(app)
-app.config['GOOGLE_CLIENT_ID'] = os.environ.get("GOOGLE_CLIENT_ID")
-app.config['GOOGLE_CLIENT_SECRET'] = os.environ.get("GOOGLE_CLIENT_SECRET")
-app.config['GOOGLE_DISCOVERY_URL'] = "https://accounts.google.com/.well-known/openid-configuration"
-
-google = oauth.register(
-    name="google",
-    client_id=app.config["GOOGLE_CLIENT_ID"],
-    client_secret=app.config["GOOGLE_CLIENT_SECRET"],
-    server_metadata_url=app.config["GOOGLE_DISCOVERY_URL"],
-    client_kwargs={"scope": "openid email profile"},
-)
-
-
-
-
 # Secret key to encrypt session data
 app.secret_key = os.environ.get('SECRET_KEY')
+
+# Flask Session
+app.config["SESSION_TYPE"] = "filesystem"
+Session(app)
+
+init_oauth(app)
+app.register_blueprint(auth_bp)
+
 
 # Define the folder to save uploaded files
 UPLOAD_FOLDER = './uploaded_files'
@@ -166,8 +152,7 @@ def preprocess_text(text):
     lemmatizer = WordNetLemmatizer()
     tokens = [lemmatizer.lemmatize(word) for word in tokens]
     return " ".join(tokens)
-
-
+    
 def save_csv(df, filename):
     # Step 6. Save to  csv file
     filename = filename + '-summary-' + datetime.datetime.now().strftime("%Y%m%d") + '.csv'
@@ -188,7 +173,7 @@ def categorization(input_file):
 
 
 
-def multiple_prompts(input_file, columns):
+def multiple_prompts(input_file, prompt_id, ):
     print("Multiple Prompts")
 
 
@@ -249,8 +234,16 @@ def result():
             elif prompt['title'] == 'Summarization':
                 result=summarization(filename)
             elif prompt['title'] == 'Multiple Prompts':
-                custom_prompt_id = request.form['custom_prompt_id']
-                custom_mapping = request.form['custom_mapping']
+                print('Multiple prompts')
+                custom_prompt_id = request.form.getlist('custom_prompt_id') if 'custom_prompt_id' in request.form else []
+                print('CustomPromptID', custom_prompt_id)
+                columns = request.form.getlist('columns')
+                print('columns', columns)
+                custom_prompts = []
+                for col in columns:
+                    custom_mapping = request.form.getlist('custom_mapping')[col]
+                    print('custom_mapping', custom_mapping)
+                    custom_prompts.append(custom_mapping)
                 result=multiple_prompts(filename, custom_prompt_id, custom_mapping)
                 
         if 'cancel' in request.form:
@@ -301,19 +294,10 @@ app.add_url_rule('/settings', 'settings', settings_page, methods=['GET', 'POST']
 # Route for the login page
 app.add_url_rule('/login', 'login', login, methods=['GET', 'POST'])
 
+app.add_url_rule('/google_login', 'google_login', google_login, methods=['GET', 'POST'])
 
-#app.add_url_rule('/google_login', 'google_login', methods=['GET', 'POST'])
-@app.route('/google_login', methods=['GET', 'POST'])
-def google_login():
-    return google.authorize_redirect(url_for("auth_callback", _external=True))
+app.add_url_rule('/auth_callback', 'auth_callback', auth_callback, methods=['GET', 'POST'])
 
-#app.add_url_rule('/auth_callback', 'auth_callback', methods=['GET', 'POST'])
-@app.route('/auth_callback', methods=['GET', 'POST'])
-def auth_callback():
-    token = google.authorize_access_token()
-    user_info = token.get("userinfo")  # Get user info
-    session["user"] = user_info  # Save user info in session
-    return redirect(url_for("home"))
 
 
 # Route for logging out
