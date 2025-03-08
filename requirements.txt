@@ -1,10 +1,9 @@
-authlib
+Authlib
 flask
 flask_session
 hypercorn
-gunicorn
 openai==0.28.1
 pandas
-pandas
 python-dotenv
+requests
 nltk

@@ -1,26 +1,27 @@
-import os
-from flask import Flask, session, jsonify, request, redirect, send_file, render_template, url_for
+import os, re, json
+from flask import Flask, session, request, jsonify, redirect, send_file, render_template, url_for
 from flask_session import Session
-from werkzeug.utils import secure_filename
 import pandas as pd
-import datetime
+
 from dotenv import load_dotenv
-from utils import allowed_file
-from settings import settings_page
+from werkzeug.utils import secure_filename
+
+
 from auth import is_logged_in, login, logout, init_oauth, auth_bp, google_login,  auth_callback
 from prompts import edit_prompt, create_prompt, read_prompts, delete_prompt, prompts_page
+from settings import settings_page
+from utils import allowed_file, save_csv
+
+
 # Summarization
 import openai
+import pandas as pd
+import datetime
 # Categorization
 import re
 import nltk
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
-
-# Download necessary NLTK data
-nltk.download('stopwords')
-nltk.download('wordnet')
-nltk.download('punkt_tab')
 
 
 # Initialize Flask application
@@ -44,7 +45,11 @@ PROMPT_FILE = 'prompts.json'
 
 
 
-## create mmutliple prompts funcionality as a stage before previw, so the user can select the prmopt and columns respectively
+# Download necessary NLTK data
+nltk.download('stopwords')
+nltk.download('wordnet')
+nltk.download('punkt_tab')
+
 
 
 # Route to display the file preview
@@ -88,12 +93,11 @@ def preview():
         prompt = next((p for p in prompts if str(p['id']) == prompt_id), None)
         if not prompt:
             return jsonify({"error": "Invalid prompt_id"}), 400
-       
 
         if prompt['title'] == 'Multiple Prompts':
-            print('prompts', prompts)
+            # print('prompts', prompts)
             columns = df.columns.tolist()
-
+            # print('columns', columns)
             return render_template(
                 'preview_multiple.html'
                 ,filename=filename
@@ -111,8 +115,61 @@ def preview():
  
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#####
+## Automation Text Evaluation
+#####
+
+
+def multiple_prompts(input_file, prompt_ids, custom_prompts, columns):
+    print("Multiple Prompts")
+    print(input_file, prompt_ids, custom_prompts, columns)
+
+    # Clean the keys with regex and restructure
+    custom_columns = {
+        re.search(r'\[(.*?)\]', k).group(1): v for k, v in custom_prompts.items() if v.strip()
+    }
+
+    # Associate indexes with custom_mapping
+    indexed_mapping = []
+    for i, column in enumerate(columns):
+        custom_value = custom_prompts.get(column, "")
+        indexed_mapping.append({
+            "index": i,
+            "column": column,
+            "custom_value": custom_value
+        })
+
+    print(indexed_mapping)  # Debug
+    for i in range(len(prompt_ids)):
+        if prompt_ids[i] == '0':
+            print('Run custom',indexed_mapping[i])
+
+        
+    
+    
 # def post_to_openai(text, model="gpt-4o", tokens=3000, temperature=0.2) -> None:
 def post_to_openai(text, model="gpt-4o", tokens=3000, temperature=0.2):
+    print('POST TO OPENAI')
     try:
         response = openai.ChatCompletion.create(
             model=model,
@@ -129,6 +186,48 @@ def post_to_openai(text, model="gpt-4o", tokens=3000, temperature=0.2):
     except openai.error.OpenAIError as e:
         print(f"An error occurred: {e}")
         return f"An error occurred: {e}"
+
+
+def summarization(input_file):
+    load_dotenv()
+    print('SUMMARIZATION')
+    print('INPUT FILE',input_file)
+
+    openai.api_key = os.environ.get("OPENAI_API_KEY")
+    try:
+        df = pd.read_csv(f"{os.path.join(app.config['UPLOAD_FOLDER'], input_file)}.csv")
+        # Get open questions/answers
+        # df1 = df.iloc[2:,[7,8,10,11,12,16,18,20,22,24,25,27,28,29,30,32]]
+
+        # Normalize text columns to lowercase
+        text_columns = [
+            "QA_Team_Composition", "Vendor_Names", "Manual_QAs_qty", "Automated_QAs_qty",
+            "Developers_qty", "Backend_tools", "Frontend_Automation", "Mobile_Automation",
+            "UnitTest_Automation", "Coverage_Testing_Tools", "Testing_Type", "Test_Management_Tools",
+            "QA_metrics", "QA_Challenges", "QA_Suggestions", "QA_AI_Tools"
+        ]
+        # df.columns = text_columns
+        
+        # Step 4: Summarize each column
+        summarized_data = {}
+        print()
+        for column in df.columns:
+            print("COLUMN", column)
+            combined_text = " ".join(str(item) for item in df[column].dropna() if isinstance(item, str))
+            print('LEN COMB', len(combined_text.splitlines()))
+            if (len(combined_text.splitlines())) > 0:
+                summarized_data[column] = post_to_openai(combined_text)
+        print("FINISH REQUESTS")                  
+        # Step 5: Create a summary DataFrame
+        df = pd.DataFrame([summarized_data])
+        save_csv(df, input_file) 
+
+        return df.to_html(classes='table table-striped', index=False)
+    except Exception as e:
+        return jsonify({"error": f"Error reading CSV file: {str(e)}"}), 400
+   
+
+
 
 
 # Preprocessing Function
@@ -153,13 +252,7 @@ def preprocess_text(text):
     tokens = [lemmatizer.lemmatize(word) for word in tokens]
     return " ".join(tokens)
     
-def save_csv(df, filename):
-    # Step 6. Save to  csv file
-    filename = filename + '-summary-' + datetime.datetime.now().strftime("%Y%m%d") + '.csv'
-    filepath = os.path.join(
-        app.config['UPLOAD_FOLDER']
-        ,filename)                
-    df.to_csv(filepath, index="False")
+
     
 def categorization(input_file):
     print("categorization", input_file)
@@ -172,45 +265,6 @@ def categorization(input_file):
     return df2
 
 
-
-def multiple_prompts(input_file, prompt_id, ):
-    print("Multiple Prompts")
-
-
-def summarization(input_file):
-    load_dotenv()
-    openai.api_key = os.environ.get("OPENAI_API_KEY1")
-    try:
-        df = pd.read_csv(f"{os.path.join(app.config['UPLOAD_FOLDER'], input_file)}.csv")
-        # Get open questions/answers
-        # df1 = df.iloc[2:,[7,8,10,11,12,16,18,20,22,24,25,27,28,29,30,32]]
-
-        # Normalize text columns to lowercase
-        text_columns = [
-            "QA_Team_Composition", "Vendor_Names", "Manual_QAs_qty", "Automated_QAs_qty",
-            "Developers_qty", "Backend_tools", "Frontend_Automation", "Mobile_Automation",
-            "UnitTest_Automation", "Coverage_Testing_Tools", "Testing_Type", "Test_Management_Tools",
-            "QA_metrics", "QA_Challenges", "QA_Suggestions", "QA_AI_Tools"
-        ]
-        # df.columns = text_columns
-        
-        # Step 4: Summarize each column
-        summarized_data = {}
-        for column in df.columns:
-            print("COLUMN", column)
-            combined_text = " ".join(str(item) for item in df[column].dropna() if isinstance(item, str))
-            print('LEN COMB', len(combined_text.splitlines()))
-            if (len(combined_text.splitlines())) > 0:
-                summarized_data[column] = post_to_openai(combined_text)
-        print("FINISH RESUESTS")                  
-        # Step 5: Create a summary DataFrame
-        df = pd.DataFrame([summarized_data])
-        save_csv(df, input_file) 
-
-        return df.to_html(classes='table table-striped', index=False)
-    except Exception as e:
-        return jsonify({"error": f"Error reading CSV file: {str(e)}"}), 400
-   
 
 # Route to display the file preview
 @app.route('/result', methods=['GET', 'POST'])
@@ -234,17 +288,11 @@ def result():
             elif prompt['title'] == 'Summarization':
                 result=summarization(filename)
             elif prompt['title'] == 'Multiple Prompts':
-                print('Multiple prompts')
-                custom_prompt_id = request.form.getlist('custom_prompt_id') if 'custom_prompt_id' in request.form else []
-                print('CustomPromptID', custom_prompt_id)
-                columns = request.form.getlist('columns')
-                print('columns', columns)
-                custom_prompts = []
-                for col in columns:
-                    custom_mapping = request.form.getlist('custom_mapping')[col]
-                    print('custom_mapping', custom_mapping)
-                    custom_prompts.append(custom_mapping)
-                result=multiple_prompts(filename, custom_prompt_id, custom_mapping)
+                prompt_ids = request.form.getlist('custom_prompt_id') if 'custom_prompt_id' in request.form else []
+                columns = json.loads(request.form.get('columns').replace("'", '"'))
+                custom_prompts = {k: v for k, v in request.form.items() if k.startswith('custom_prompts')}
+                       
+                result=multiple_prompts(filename, prompt_ids, custom_prompts, columns)
                 
         if 'cancel' in request.form:
             # Go back to the form
@@ -298,10 +346,10 @@ app.add_url_rule('/google_login', 'google_login', google_login, methods=['GET', 
 
 app.add_url_rule('/auth_callback', 'auth_callback', auth_callback, methods=['GET', 'POST'])
 
-
-
 # Route for logging out
 app.add_url_rule('/logout', 'logout', logout)
+
+
 
 # Route to handle the home page and file uploads
 @app.route('/', methods=['GET', 'POST'])
@@ -311,6 +359,8 @@ def home():
         return redirect(url_for('login'))
  
     session.pop('_flashes', None)
+    # GET request renders the upload form
+  
     # GET request renders the upload form
     return render_template('home.html', prompts=read_prompts())
 

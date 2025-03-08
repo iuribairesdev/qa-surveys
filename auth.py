@@ -4,9 +4,6 @@ import os
 from dotenv import load_dotenv
 from authlib.integrations.flask_client import OAuth
 
-
-
-
 auth_bp = Blueprint("auth", __name__)
 oauth = OAuth()
 

@@ -1,5 +1,8 @@
 
 import os, json
+from dotenv import load_dotenv
+from flask import jsonify
+
 
 # Allowed Extensions
 ALLOWED_EXTENSIONS = {'csv'}
@@ -70,4 +73,14 @@ def validate_string(str1):
         return False, []
     return True, str_list
 
+
+
+def save_csv(df, filename):
+    # Step 6. Save to  csv file
+    filename = filename + '-summary-' + datetime.datetime.now().strftime("%Y%m%d") + '.csv'
+    filepath = os.path.join(
+        UPLOAD_FOLDER
+        ,filename)
+    print('FILE', filepath)
+    df.to_csv(filepath, index="False")
 
