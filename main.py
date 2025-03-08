@@ -170,6 +170,7 @@ def multiple_prompts(input_file, prompt_ids, custom_prompts, columns):
 # def post_to_openai(text, model="gpt-4o", tokens=3000, temperature=0.2) -> None:
 def post_to_openai(text, model="gpt-4o", tokens=3000, temperature=0.2):
     print('POST TO OPENAI')
+    openai.api_key = os.environ.get("OPENAI_API_KEY")
     try:
         response = openai.ChatCompletion.create(
             model=model,
@@ -192,8 +193,6 @@ def summarization(input_file):
     load_dotenv()
     print('SUMMARIZATION')
     print('INPUT FILE',input_file)
-
-    openai.api_key = os.environ.get("OPENAI_API_KEY")
     try:
         df = pd.read_csv(f"{os.path.join(app.config['UPLOAD_FOLDER'], input_file)}.csv")
         # Get open questions/answers
@@ -262,7 +261,7 @@ def categorization(input_file):
         # Apply cleaning
         df2[col] = df1[col].apply(preprocess_text)
     save_csv(df2, input_file)  
-    return df2
+    return df2.to_html(classes='table table-striped', index=False)
 
 
 
@@ -298,10 +297,11 @@ def result():
             # Go back to the form
             return redirect(url_for('home'))
         elif 'download' in request.form:
+            filename = filename + '-summary-' + datetime.datetime.now().strftime("%Y%m%d") + '.csv'
             return send_file(
                 os.path.join(app.config['UPLOAD_FOLDER'], filename),
                 as_attachment=True,  # Set to False if you want to view in the browser
-                download_name=str(filename + '-summary.csv'),
+                download_name=str(filename),
                 mimetype="text/csv"
             )
     else:
