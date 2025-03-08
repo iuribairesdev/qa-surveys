@@ -6,6 +6,22 @@ import os
 PROMPT_FILE = './prompts.json'
 
 
+# Helper function to read prompts from JSON file
+def read_prompts():
+    if not os.path.exists(PROMPT_FILE):
+        return []
+    with open(PROMPT_FILE, 'r') as file:
+        return json.load(file)
+    
+
+def get_prompt(prompt_id):
+    """Retrieve a prompt based on ID"""
+    prompts = read_prompts()
+    prompt = next((p for p in prompts if str(p['id']) == prompt_id), None)
+    if not prompt:
+        # return "Prompt not found."
+        return jsonify({"error": "Invalid prompt_id"}), 400
+    return prompt
 
 # Helper function to write prompts to JSON file
 def write_prompts(prompts):
@@ -79,21 +95,8 @@ def delete_prompt(prompt_id):
     
     return redirect(url_for('prompts'))
 
-# Helper function to read prompts from JSON file
-def read_prompts():
-    if not os.path.exists(PROMPT_FILE):
-        return []
-    with open(PROMPT_FILE, 'r') as file:
-        return json.load(file)
 
 
-def get_prompt(prompts, identifier):
-    """Retrieve a prompt based on ID or title."""
-    
-    for prompt in prompts:
-        if prompt.get('id') == identifier or prompt.get('title') == identifier:
-            return f"{prompt['pretext']}\n{prompt['posttext']}"
-    return "Prompt not found."
 
 
 # Function for prompt page
