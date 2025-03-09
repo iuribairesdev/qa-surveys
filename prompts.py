@@ -1,6 +1,6 @@
 # prompt.py
 import json
-from flask import flash, request, redirect, render_template, url_for
+from flask import flash, jsonify, request, redirect, render_template, url_for
 from auth import is_logged_in
 import os
 PROMPT_FILE = './prompts.json'

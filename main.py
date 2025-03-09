@@ -84,6 +84,7 @@ def preview():
                 df = pd.read_csv(f"{os.path.join(app.config['UPLOAD_FOLDER'], filename)}.csv")
             except Exception as e:
                 return jsonify({"error": f"Error reading CSV file: {str(e)}"}), 400
+           
             # Convert dataframe to HTML table
             table_html = df.to_html(classes='table table-striped', index=False)
 
@@ -138,16 +139,15 @@ def preview():
 #####
 
 # def post_to_openai(text, model="gpt-4o", tokens=3000, temperature=0.2) -> None:
-def post_to_openai(text, prompt_id, model="gpt-4o", tokens=3000, temperature=0.2):
+def post_to_openai(text, pretext, posttext='', model="gpt-4o", tokens=3000, temperature=0.2):
     print('POST TO OPENAI')
-    prompt = get_prompt(prompt_id)
     openai.api_key = os.environ.get("OPENAI_API_KEY")
     try:
         response = openai.ChatCompletion.create(
             model=model,
             messages=[
-                {"role": "system", "content": f"{prompt['pretext']}"},
-                {"role": "user", "content": f"{text}"}
+                {"role": "system", "content": f"{pretext}"},
+                {"role": "user", "content": f"{text} \n\n {posttext}"}
             ],
             max_tokens=tokens,  # how long the completion to be
             temperature=temperature, # creativity level
@@ -226,7 +226,8 @@ def summarization(input_file, prompt_id):
             combined_text = " ".join(str(item) for item in df[column].dropna() if isinstance(item, str))
             print('LEN COMB', len(combined_text.splitlines()))
             if (len(combined_text.splitlines())) > 0:
-                summarized_data[column] = post_to_openai(combined_text, prompt_id)
+                prompt = get_prompt(prompt_id)
+                summarized_data[column] = post_to_openai(combined_text, prompt['pretext'], prompt['posttext'])
         print("FINISH REQUESTS")                  
         # Step 5: Create a summary DataFrame
         df = pd.DataFrame([summarized_data])
@@ -239,62 +240,46 @@ def summarization(input_file, prompt_id):
 
 
 
-def multiple_prompts(input_file, prompt_id, custom_prompt_ids, custom_prompts, columns):
+def multiple_prompts(input_file, prompt_id, custom_prompt_ids, custom_prompts):
     print("Multiple Prompts")
-    print(input_file, prompt_id)
-    print('custom_prompts', custom_prompts)
+    print('input_file', input_file)
+    print('prompt_id', prompt_id)
+    print('promptIDs', custom_prompt_ids)
+    # print('custom_prompts', custom_prompts)
 
     df = pd.read_csv(f"{os.path.join(app.config['UPLOAD_FOLDER'], input_file)}.csv")
-
-    # Clean the keys with regex and restructure
-    custom_columns = {
-        re.search(r'\[(.*?)\]', k).group(1): v for k, v in custom_prompts.items() if v.strip()
-    }
-
-    # Associate indexes with custom_mapping
-    indexed_mapping = []
-    for i, col in enumerate(columns):
-        custom_value = custom_prompts.get(col, "")
-        indexed_mapping.append({
-            "index": i,
-            "column": col,
-            "custom_value": custom_value
-        })
-
+    dfz = pd.DataFrame()  # output dataframe
+    print('df COLUMNS', df.columns)
     # print(indexed_mapping)  # Debug
     for i in range(len(custom_prompt_ids)):
-        print('ID', custom_prompt_ids[i])
-        prompt = get_prompt(custom_prompt_ids[i])
-
-        print('TITLE', prompt['title'])
-        if prompt['title'] == 'Multiple Prompts':
-            print('Run custom', custom_prompt_ids[i], indexed_mapping[i])
+        print('custom ID', custom_prompt_ids[i])
+        print('loopi', i)
+        if custom_prompt_ids[i] == '0':
+            summarized_data = {}
+            print('Run custom', custom_prompt_ids[i])
+            if custom_prompts[i]['column'] in df.columns:
+                summarized_data[custom_prompts[i]['column']] = post_to_openai(df[custom_prompts[i]['column']], custom_prompts[i]['custom_value'])
+            df1 = pd.DataFrame([summarized_data])
         else:
-            print('Run template', custom_prompt_ids[i], indexed_mapping[i])
-            # result = post_to_openai(text, prompt_id)
-            
-            if prompt['title'] == 'Summarization': 
-                summarized_data = {}
-                for column in df.columns:
-                    print("COLUMN", column)
-                    combined_text = " ".join(str(item) for item in df[column].dropna() if isinstance(item, str))
-                    print('LEN COMB', len(combined_text.splitlines()))
-                    if (len(combined_text.splitlines())) > 0:
-                        print('Summarize text')
-                        # summarized_data[column] = post_to_openai(combined_text, prompt_id)
 
-                print("FINISH REQUESTS")
-                # Step 5: Create a summary DataFrame
-                df = pd.DataFrame([summarized_data])
+            prompt = get_prompt(custom_prompt_ids[i])
+            if prompt['title'] == 'Summarization': 
+                summarized_data = {}            
+                combined_text = " ".join(str(item) for item in df[custom_prompts[i]['column']].dropna() if isinstance(item, str))
+                if (len(combined_text.splitlines())) > 0:
+                    print('Summarize text')
+                    prompt = get_prompt(prompt_id)
+                    summarized_data[custom_prompts[i]['column']] = post_to_openai(combined_text, prompt['pretext'])
+                # Create a summary DataFrame row
+                df1 = pd.DataFrame([summarized_data])
             elif prompt['title'] == 'Categorization':
                 print('catgorize text')
                 df1 = pd.DataFrame()
-                for col in df.columns:
-                    # Apply cleaning
-                    df1[col] = df[col].apply(preprocess_text)
-
-    
-    
+                # Apply cleaning - Create categorized rows
+                df1[custom_prompts[i]['column']] = df[custom_prompts[i]['column']].apply(preprocess_text)
+        dfz = pd.concat([dfz, df1], axis=1, ignore_index=True)
+    dfz.columns = df.columns
+    return dfz.to_html(classes='table table-striped', index=False)    
 
 
 
@@ -318,10 +303,14 @@ def result():
                 result=summarization(filename, prompt_id)
             elif prompt['title'] == 'Multiple Prompts':
                 custom_prompt_ids = request.form.getlist('custom_prompt_id') if 'custom_prompt_id' in request.form else []
-                columns = json.loads(request.form.get('columns').replace("'", '"'))
                 custom_prompts = {k: v for k, v in request.form.items() if k.startswith('custom_prompts')}
-                       
-                result=multiple_prompts(filename, prompt_id, custom_prompt_ids, custom_prompts, columns)
+                # Convert to an array
+                arr_prompts = [
+                    {"column": re.search(r'\[(.*?)\]', key).group(1), "custom_value": value}
+                    for key, value in custom_prompts.items()
+                ]
+                # print('arr', arr)       
+                result= multiple_prompts(filename, prompt_id, custom_prompt_ids, arr_prompts)
                 
         if 'cancel' in request.form:
             # Go back to the form

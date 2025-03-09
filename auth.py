@@ -12,8 +12,8 @@ def init_oauth(app):
     app.config['GOOGLE_CLIENT_ID'] = os.environ.get("GOOGLE_CLIENT_ID")
     app.config['GOOGLE_CLIENT_SECRET'] = os.environ.get("GOOGLE_CLIENT_SECRET")
     app.config['GOOGLE_DISCOVERY_URL'] = "https://accounts.google.com/.well-known/openid-configuration"
- #    app.config['AUTHORIZE_URL'] = "https://accounts.google.com/o/oauth2/auth"
- #   app.config['ACCESS_TOKEN_URL'] = "https://accounts.google.com/o/oauth2/token"
+    # app.config['AUTHORIZE_URL'] = "https://accounts.google.com/o/oauth2/auth"
+    # app.config['ACCESS_TOKEN_URL'] = "https://accounts.google.com/o/oauth2/token"
  
     # Google OAuth Configuration
     oauth.init_app(app)
@@ -23,6 +23,7 @@ def init_oauth(app):
         client_secret=app.config["GOOGLE_CLIENT_SECRET"],
         server_metadata_url=app.config["GOOGLE_DISCOVERY_URL"],
         client_kwargs={"scope": "openid email profile"},
+        
     )
 
 

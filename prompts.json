@@ -15,7 +15,7 @@
     {
         "id": 3,
         "title": "Multiple Prompts",
-        "pretext": "n/a",
+        "pretext": "You are a QA specialist that summarizes open answers from surveys. The goal is to process the following answers in a consistent and detailed summary:\r\n",
         "posttext": "n/a"
     }
 ]
