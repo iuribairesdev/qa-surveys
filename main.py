@@ -88,6 +88,9 @@ def preview():
             # Convert dataframe to HTML table
             table_html = df.to_html(classes='table table-striped', index=False)
 
+
+        model = request.form.get('model') 
+        
         # Read the chosen prompt
         prompt_id = request.form.get('prompt_id') 
         prompt = get_prompt(prompt_id)
@@ -100,7 +103,8 @@ def preview():
             return render_template(
                 'preview_multiple.html'
                 ,filename=filename
-                ,prompt_id=prompt_id
+                ,model=model
+                ,prompt=prompt
                 ,columns=columns
                 ,prompts=read_prompts()
                 ,content=table_html
@@ -108,7 +112,8 @@ def preview():
         return render_template(
             'preview.html'
             ,filename=filename
-            ,prompt_id=prompt_id
+            ,model=model
+            ,prompt=prompt
             ,content=table_html
         )
  
@@ -139,8 +144,9 @@ def preview():
 #####
 
 # def post_to_openai(text, model="gpt-4o", tokens=3000, temperature=0.2) -> None:
-def post_to_openai(text, pretext, posttext='', model="gpt-4o", tokens=3000, temperature=0.2):
+def post_to_openai(model, text, pretext, posttext='', tokens=3000, temperature=0.2):
     print('POST TO OPENAI')
+    print('model', model)
     openai.api_key = os.environ.get("OPENAI_API_KEY")
     try:
         response = openai.ChatCompletion.create(
@@ -201,7 +207,7 @@ def categorization(input_file):
 
 
 
-def summarization(input_file, prompt_id):
+def summarization(input_file, model, prompt_id):
     load_dotenv()
     print('SUMMARIZATION')
     print('INPUT FILE',input_file)
@@ -227,7 +233,7 @@ def summarization(input_file, prompt_id):
             print('LEN COMB', len(combined_text.splitlines()))
             if (len(combined_text.splitlines())) > 0:
                 prompt = get_prompt(prompt_id)
-                summarized_data[column] = post_to_openai(combined_text, prompt['pretext'], prompt['posttext'])
+                summarized_data[column] = post_to_openai(model, combined_text, prompt['pretext'], prompt['posttext'])
         print("FINISH REQUESTS")                  
         # Step 5: Create a summary DataFrame
         df = pd.DataFrame([summarized_data])
@@ -240,7 +246,7 @@ def summarization(input_file, prompt_id):
 
 
 
-def multiple_prompts(input_file, prompt_id, custom_prompt_ids, custom_prompts):
+def multiple_prompts(input_file, model, prompt_id, custom_prompt_ids, custom_prompts):
     print("Multiple Prompts")
     print('input_file', input_file)
     print('prompt_id', prompt_id)
@@ -258,7 +264,7 @@ def multiple_prompts(input_file, prompt_id, custom_prompt_ids, custom_prompts):
             summarized_data = {}
             print('Run custom', custom_prompt_ids[i])
             if custom_prompts[i]['column'] in df.columns:
-                summarized_data[custom_prompts[i]['column']] = post_to_openai(df[custom_prompts[i]['column']], custom_prompts[i]['custom_value'])
+                summarized_data[custom_prompts[i]['column']] = post_to_openai(model, df[custom_prompts[i]['column']], custom_prompts[i]['custom_value'])
             df1 = pd.DataFrame([summarized_data])
         else:
 
@@ -269,7 +275,7 @@ def multiple_prompts(input_file, prompt_id, custom_prompt_ids, custom_prompts):
                 if (len(combined_text.splitlines())) > 0:
                     print('Summarize text')
                     prompt = get_prompt(prompt_id)
-                    summarized_data[custom_prompts[i]['column']] = post_to_openai(combined_text, prompt['pretext'])
+                    summarized_data[custom_prompts[i]['column']] = post_to_openai(model, combined_text, prompt['pretext'])
                 # Create a summary DataFrame row
                 df1 = pd.DataFrame([summarized_data])
             elif prompt['title'] == 'Categorization':
@@ -294,13 +300,15 @@ def result():
     if request.method == 'POST':
         filename = request.form['filename']
         if 'confirm' in request.form:
+            # Read chosen model
+            model = request.form['model']
             # Read the chosen prompt
             prompt_id = request.form['prompt_id']
             prompt = get_prompt(prompt_id)
             if prompt['title'] == 'Categorization':
-                result=categorization(filename)
+                result=categorization(filename, model)
             elif prompt['title'] == 'Summarization':
-                result=summarization(filename, prompt_id)
+                result=summarization(filename, model, prompt_id)
             elif prompt['title'] == 'Multiple Prompts':
                 custom_prompt_ids = request.form.getlist('custom_prompt_id') if 'custom_prompt_id' in request.form else []
                 custom_prompts = {k: v for k, v in request.form.items() if k.startswith('custom_prompts')}
@@ -310,7 +318,7 @@ def result():
                     for key, value in custom_prompts.items()
                 ]
                 # print('arr', arr)       
-                result= multiple_prompts(filename, prompt_id, custom_prompt_ids, arr_prompts)
+                result= multiple_prompts(filename, model, prompt_id, custom_prompt_ids, arr_prompts)
                 
         if 'cancel' in request.form:
             # Go back to the form

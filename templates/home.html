@@ -9,7 +9,23 @@
   <form action="{{ url_for('preview')}}" method="POST" enctype="multipart/form-data">
     <div class="mb-3">
       <div class="form-group">
-
+        <label for="model" class="form-label"><br><b>Model:</b></label>
+        <select class="form-control" id="model" name="model" required>
+          <!-- Add options for the models, with one of them being the current setting -->
+          <option value="o1-2024-12-17">GPTo1</option>
+          <option value="o1-mini-2024-09-12">GPTo1-mini</option>
+          <option value="gpt-4o" selected>GPT4o</option>
+          <option value="gpt-4o-mini">GPT-4o Mini</option>
+          <option value="gpt4">GPT-4</option>
+          <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
+          <option value="dall-e-3">Dall-e-3"</option>
+        </select>
+        <br>
+        <span class="helper-text">[i]&nbsp;</span><span>Select the model used for processing. Each model has different capabilities.</span>
+      </div>
+    </div>
+    <div class="mb-3">
+      <div class="form-group">
         <label for="prompt_id" class="form-label"><br><b>Select a Prompt Template</b></label>
         <select class="form-control" id="prompt_id" name="prompt_id" required>
             <option value="" disabled selected>No prompt selected...</option>
@@ -17,6 +33,8 @@
                 <option value="{{ prompt.id }}">{{ prompt.title }}</option>
             {% endfor %}
         </select>
+        <br>
+        <span class="helper-text">[i]&nbsp;</span><span>Select the prompt to be used for processing.</span>
       </div>
     </div>
 
