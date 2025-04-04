@@ -16,8 +16,10 @@
       </center>       
         <form id="previewForm" action="{{ url_for('result')}}" method="POST" class="mt-4">
             <input type="hidden" id="filename" name="filename" value="{{ filename }}">
-            <input type="hidden" id="prompt_id" name="prompt_id" value="{{ prompt.prompt_id }}">
+            <input type="hidden" id="prompt_id" name="prompt_id" value="{{ prompt.id }}">
             <input type="hidden" id="columns" name="columns" value="{{ columns }}">
+            <input type="hidden" id="model" name="model" value="{{ model }}">
+         
             <h1>Preview</h1> 
             <h3>Column Prompt Mapping
               <span id="toggleFormBtn" class="ms-2" style="cursor: pointer; font-size: 1.5rem;">
@@ -63,11 +65,13 @@
                       <div class="col-3">
 
                             <select class="form-control" id="custom_prompt_id" name="custom_prompt_id" onchange="toggleInput(this)" required>
-                              <option value="{{prompt.prompt_id}}" disabled selected>{{prompt.title}}</option>
+                              <option value="{{prompts[0].id}}" selected>{{prompts[0].title}}</option>
                               {% for p in prompts %}
+                                {% if p.title != "Multiple Prompts" and p.title != "Summarization": %} 
                                   <option value="{{ prompt.id }}">{{ p.title }}</option>
+                                {% endif %}
                               {% endfor %}                          
-                              <option value="0">Other</option>
+                              <option value="0">Custom</option>
                             </select>                            
                         
                       </div>

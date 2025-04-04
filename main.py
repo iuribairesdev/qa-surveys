@@ -81,7 +81,7 @@ def preview():
             print('File successfully uploaded!')        
             # Read CSV content
             try:
-                df = pd.read_csv(f"{os.path.join(app.config['UPLOAD_FOLDER'], filename)}.csv")
+                df = pd.read_csv(f"{os.path.join(app.config['UPLOAD_FOLDER'], filename)}.csv").head(5)
             except Exception as e:
                 return jsonify({"error": f"Error reading CSV file: {str(e)}"}), 400
            
@@ -94,8 +94,7 @@ def preview():
         # Read the chosen prompt
         prompt_id = request.form.get('prompt_id') 
         prompt = get_prompt(prompt_id)
-       
-
+      
         if prompt['title'] == 'Multiple Prompts':
             # print('prompts', prompts)
             columns = df.columns.tolist()
@@ -160,7 +159,15 @@ def post_to_openai(model, text, pretext, posttext='', tokens=3000, temperature=0
             # response_format={"type": "json_object"}
         )      
         # print('response', response)  
-        return response.choices[0].message.content.strip()
+
+        result_text = response["choices"][0]["message"]["content"]
+        tokens_used = response["usage"]["total_tokens"]
+
+        # Cost calculation based on OpenAI pricing
+        COST_PER_1K_TOKENS = 0.03  # Example for GPT-4
+        cost = (tokens_used / 1000) * COST_PER_1K_TOKENS
+        return result_text, tokens_used, cost
+        # return response.choices[0].message.content.strip()
     except openai.error.OpenAIError as e:
         print(f"An error occurred: {e}")
         return f"An error occurred: {e}"
@@ -227,19 +234,28 @@ def summarization(input_file, model, prompt_id):
         
         # Step 4: Summarize each column
         summarized_data = {}
+        tokens = {}
+        costs = {}
         for column in df.columns:
             print("COLUMN", column)
             combined_text = " ".join(str(item) for item in df[column].dropna() if isinstance(item, str))
             print('LEN COMB', len(combined_text.splitlines()))
             if (len(combined_text.splitlines())) > 0:
                 prompt = get_prompt(prompt_id)
-                summarized_data[column] = post_to_openai(model, combined_text, prompt['pretext'], prompt['posttext'])
+                summarized_data[column], tokens[column], costs[column] = post_to_openai(model, combined_text, prompt['pretext'], prompt['posttext'])
         print("FINISH REQUESTS")                  
         # Step 5: Create a summary DataFrame
         df = pd.DataFrame([summarized_data])
-        save_csv(df, input_file) 
+        df_tokens = pd.DataFrame([tokens])
+        df_costs = pd.DataFrame([costs])
+        save_csv(df, input_file)
+        save_csv(df_tokens, f"tokens-{input_file}") 
+        save_csv(df_costs, f"costs-{input_file}")  
 
-        return df.to_html(classes='table table-striped', index=False)
+        table_text = df.to_html(classes='table table-striped', index=False)
+        table_tokens = df_tokens.to_html(classes='table table-striped', index=False)
+        table_costs = df_costs.to_html(classes='table table-striped', index=False)
+        return table_text, table_tokens, table_costs
     except Exception as e:
         return jsonify({"error": f"Error reading CSV file: {str(e)}"}), 400
    
@@ -254,38 +270,45 @@ def multiple_prompts(input_file, model, prompt_id, custom_prompt_ids, custom_pro
     # print('custom_prompts', custom_prompts)
 
     df = pd.read_csv(f"{os.path.join(app.config['UPLOAD_FOLDER'], input_file)}.csv")
-    dfz = pd.DataFrame()  # output dataframe
+    dfz = pd.DataFrame()
+    dfz_tokens = pd.DataFrame()
+    dfz_costs = pd.DataFrame()  # output dataframe
     print('df COLUMNS', df.columns)
     # print(indexed_mapping)  # Debug
     for i in range(len(custom_prompt_ids)):
         print('custom ID', custom_prompt_ids[i])
         print('loopi', i)
+        summarized_data = {}
+        tokens = {}
+        costs = {}    
         if custom_prompt_ids[i] == '0':
-            summarized_data = {}
             print('Run custom', custom_prompt_ids[i])
             if custom_prompts[i]['column'] in df.columns:
-                summarized_data[custom_prompts[i]['column']] = post_to_openai(model, df[custom_prompts[i]['column']], custom_prompts[i]['custom_value'])
+                summarized_data[custom_prompts[i]['column']],tokens[custom_prompts[i]['column']], costs[custom_prompts[i]['column']] = post_to_openai(model, df[custom_prompts[i]['column']], custom_prompts[i]['custom_value'])
             df1 = pd.DataFrame([summarized_data])
         else:
 
             prompt = get_prompt(custom_prompt_ids[i])
             if prompt['title'] == 'Summarization': 
-                summarized_data = {}            
                 combined_text = " ".join(str(item) for item in df[custom_prompts[i]['column']].dropna() if isinstance(item, str))
                 if (len(combined_text.splitlines())) > 0:
                     print('Summarize text')
                     prompt = get_prompt(prompt_id)
-                    summarized_data[custom_prompts[i]['column']] = post_to_openai(model, combined_text, prompt['pretext'])
+                    summarized_data[custom_prompts[i]['column']], tokens[custom_prompts[i]['column']], costs[custom_prompts[i]['column']] = post_to_openai(model, combined_text, prompt['pretext'])
                 # Create a summary DataFrame row
                 df1 = pd.DataFrame([summarized_data])
+                df1_tokens = pd.DataFrame([tokens])
+                df1_costs = pd.DataFrame([costs])
             elif prompt['title'] == 'Categorization':
                 print('catgorize text')
                 df1 = pd.DataFrame()
                 # Apply cleaning - Create categorized rows
                 df1[custom_prompts[i]['column']] = df[custom_prompts[i]['column']].apply(preprocess_text)
         dfz = pd.concat([dfz, df1], axis=1, ignore_index=True)
-    dfz.columns = df.columns
-    return dfz.to_html(classes='table table-striped', index=False)    
+        dfz_tokens = pd.concat([dfz_tokens, df1_tokens], axis=1, ignore_index=True)
+        dfz_costs = pd.concat([dfz_costs, df1_costs], axis=1, ignore_index=True)
+        
+    return dfz.to_html(classes='table table-striped', index=False), dfz_tokens.to_html(classes='table table-striped', index=False), dfz_costs.to_html(classes='table table-striped', index=False)        
 
 
 
@@ -304,11 +327,17 @@ def result():
             model = request.form['model']
             # Read the chosen prompt
             prompt_id = request.form['prompt_id']
+
+            print("prmpt_id", prompt_id)
             prompt = get_prompt(prompt_id)
+            print("prompt", prompt)
+
             if prompt['title'] == 'Categorization':
                 result=categorization(filename, model)
+                tokens = ''
+                costs = ''
             elif prompt['title'] == 'Summarization':
-                result=summarization(filename, model, prompt_id)
+                result, tokens, costs=summarization(filename, model, prompt_id)
             elif prompt['title'] == 'Multiple Prompts':
                 custom_prompt_ids = request.form.getlist('custom_prompt_id') if 'custom_prompt_id' in request.form else []
                 custom_prompts = {k: v for k, v in request.form.items() if k.startswith('custom_prompts')}
@@ -318,7 +347,7 @@ def result():
                     for key, value in custom_prompts.items()
                 ]
                 # print('arr', arr)       
-                result= multiple_prompts(filename, model, prompt_id, custom_prompt_ids, arr_prompts)
+                result, tokens, costs = multiple_prompts(filename, model, prompt_id, custom_prompt_ids, arr_prompts)
                 
         if 'cancel' in request.form:
             # Go back to the form
@@ -334,7 +363,7 @@ def result():
     else:
         result = 'Bad method request '
     print('result', result)
-    return render_template('result.html', page_title="Summary Result", result_html=result, filename=filename)
+    return render_template('result.html', page_title="Summary Result", result_html=result, tokens_html=tokens, costs_html=costs, filename=filename)
 
 
 

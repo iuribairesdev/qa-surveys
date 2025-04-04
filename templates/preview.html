@@ -18,7 +18,7 @@
         <form id="previewForm" action="{{ url_for('result')}}" method="POST" class="mt-4">
             <input type="hidden" id="filename" name="filename" value="{{ filename }}">
             <input type="hidden" id="model" name="model" value="{{ model }}">
-            <input type="hidden" id="prompt_id" name="prompt_id" value="{{ prompt.prompt_id }}">
+            <input type="hidden" id="prompt_id" name="prompt_id" value="{{ prompt.id }}">
       
             <h1>Preview
               <span id="toggleFormBtn" class="ms-2" style="cursor: pointer; font-size: 1.5rem;">
