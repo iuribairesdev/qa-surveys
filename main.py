@@ -208,7 +208,8 @@ def categorization(input_file):
         # Apply cleaning
         df2[col] = df1[col].apply(preprocess_text)
     save_csv(df2, input_file)  
-    return df2.to_html(classes='table table-striped', index=False)
+
+    return df2.head(3).to_html(classes='table table-striped', index=False)
 
 
 
