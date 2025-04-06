@@ -1,16 +1,18 @@
-import os, re, json
-from flask import Flask, session, request, jsonify, redirect, send_file, render_template, url_for
+import os, re
+from flask import Flask, flash, session, request, jsonify, redirect, send_file, render_template, url_for
 from flask_session import Session
 import pandas as pd
+from werkzeug.utils import secure_filename
 
 from dotenv import load_dotenv
-from werkzeug.utils import secure_filename
+
+import magic
 
 
 from auth import is_logged_in, login, logout, init_oauth, auth_bp, google_login,  auth_callback
 from prompts import get_prompt, edit_prompt, create_prompt, read_prompts, delete_prompt, prompts_page
 from settings import settings_page
-from utils import allowed_file, save_csv
+from utils import allowed_file, save_file
 
 
 # Summarization
@@ -22,7 +24,8 @@ import re
 import nltk
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
-
+import requests
+from io import BytesIO
 
 # Initialize Flask application
 app = Flask(__name__)
@@ -43,13 +46,35 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 PROMPT_FILE = 'prompts.json'
 
-
+GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
+GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
+GOOGLE_SCOPE = os.environ.get('GOOGLE_SCOPE')
 
 # Download necessary NLTK data
 nltk.download('stopwords')
 nltk.download('wordnet')
 nltk.download('punkt_tab')
 
+
+def extract_file_id(drive_link):
+    """
+    Extracts the file ID from a standard Google Drive URL.
+    """
+    match = re.search(r'/d/([a-zA-Z0-9_-]+)', drive_link)
+    if match:
+        return match.group(1)
+    return None
+
+def download_file_from_drive(file_id):
+    """
+    Downloads the file from Google Drive using the file ID.
+    """
+    download_url = f"https://drive.google.com/uc?export=download&id={file_id}"
+    response = requests.get(download_url)
+    if response.status_code == 200:
+        return BytesIO(response.content)
+    else:
+        raise Exception("Failed to download file from Google Drive.")
 
 
 # Route to display the file preview
@@ -60,48 +85,56 @@ def preview():
         return redirect(url_for('login'))
     
     if request.method == 'POST':
+    
         # Check if the post request has the file part
         if 'file' not in request.files:
             return jsonify({"error": "No file part"}), 400        
+        else:
+            file = request.files['file']
+            # If no file is selected
+            if file.filename == '':
+                return jsonify({"error": "No selected file"}), 400
 
-        file = request.files['file']
-        # If no file is selected
-        if file.filename == '':
-            return jsonify({"error": "No selected file"}), 400
+            if not allowed_file(file.filename):
+                return jsonify({"error": "Please, upload CSV or XLSX files only!"}), 400
 
-        if not allowed_file(file.filename):
-            return jsonify({"error": "Please, upload CSV files only!"}), 400
+            # If file is valid and has allowed extension
+            print('FILE', file.filename)
+            if file and allowed_file(file.filename):
+                if not os.path.exists(app.config['UPLOAD_FOLDER']):
+                    os.makedirs(app.config['UPLOAD_FOLDER'])   
 
-        # If file is valid and has allowed extension
-        if file and allowed_file(file.filename):
-            if not os.path.exists(app.config['UPLOAD_FOLDER']):
-                os.makedirs(app.config['UPLOAD_FOLDER'])   
-            filename = secure_filename(file.filename).split(".")[0]
-            file.save(f"{os.path.join(app.config['UPLOAD_FOLDER'], filename)}.csv")
-            print('File successfully uploaded!')        
-            # Read CSV content
-            try:
-                df = pd.read_csv(f"{os.path.join(app.config['UPLOAD_FOLDER'], filename)}.csv").head(5)
-            except Exception as e:
-                return jsonify({"error": f"Error reading CSV file: {str(e)}"}), 400
-           
-            # Convert dataframe to HTML table
-            table_html = df.to_html(classes='table table-striped', index=False)
+                # df, filename = file_to_df(file)
+                filetype = secure_filename(file.filename).split(".")[1]
+                filename = secure_filename(file.filename).split(".")[0]
+                file.save(f"{os.path.join(UPLOAD_FOLDER, filename)}.{filetype}")
+                print('File successfully uploaded!')        
 
+
+        # Read CSV content
+        if filetype == 'csv':
+            df = pd.read_csv(f"{os.path.join(app.config['UPLOAD_FOLDER'], filename)}.csv").head(5)
+        elif filetype == 'xlsx':
+            df = pd.read_excel(f"{os.path.join(app.config['UPLOAD_FOLDER'], filename)}.{filetype}", engine='openpyxl').head(5)
+            df.columns = df.iloc[0]
+            df = df[1:].reset_index(drop=True)
+
+        # Convert dataframe to HTML table
+        table_html = df.to_html(classes='table table-striped', index=False)
 
         model = request.form.get('model') 
         
         # Read the chosen prompt
         prompt_id = request.form.get('prompt_id') 
         prompt = get_prompt(prompt_id)
-      
+    
         if prompt['title'] == 'Multiple Prompts':
             # print('prompts', prompts)
             columns = df.columns.tolist()
             # print('columns', columns)
             return render_template(
                 'preview_multiple.html'
-                ,filename=filename
+                ,filename=f"{filename}.{filetype}"
                 ,model=model
                 ,prompt=prompt
                 ,columns=columns
@@ -110,12 +143,12 @@ def preview():
             )
         return render_template(
             'preview.html'
-            ,filename=filename
+            ,filename=f"{filename}.{filetype}"
             ,model=model
             ,prompt=prompt
             ,content=table_html
         )
- 
+    return
 
 
 
@@ -160,14 +193,17 @@ def post_to_openai(model, text, pretext, posttext='', tokens=3000, temperature=0
         )      
         # print('response', response)  
 
-        result_text = response["choices"][0]["message"]["content"]
-        tokens_used = response["usage"]["total_tokens"]
+        message_content = response["choices"][0]["message"]["content"]
+        total_tokens = response["usage"]["total_tokens"]
+        # input_tokens = response["usage"]["input_tokens"]
+        # output_tokens = response["usage"]["output_tokens"]
 
         # Cost calculation based on OpenAI pricing
         COST_PER_1K_TOKENS = 0.03  # Example for GPT-4
-        cost = (tokens_used / 1000) * COST_PER_1K_TOKENS
-        return result_text, tokens_used, cost
-        # return response.choices[0].message.content.strip()
+        total_cost = (total_tokens / 1000) * COST_PER_1K_TOKENS
+        
+        return message_content, total_tokens, total_cost
+        
     except openai.error.OpenAIError as e:
         print(f"An error occurred: {e}")
         return f"An error occurred: {e}"
@@ -200,116 +236,154 @@ def preprocess_text(text):
     
 
     
-def categorization(input_file):
-    print("categorization", input_file)
-    df1 = pd.read_csv(f"{os.path.join(app.config['UPLOAD_FOLDER'], input_file)}.csv")
-    df2 = pd.DataFrame()
-    for col in df1.columns:
+def categorization(filename):
+    print("categorization", filename)
+    filetype = secure_filename(str(filename)).split(".")[1]
+    filename = secure_filename(str(filename)).split(".")[0]
+    if filetype == 'csv':
+        df = pd.read_csv(f"{os.path.join(app.config['UPLOAD_FOLDER'], filename)}.{filetype}").head(5)
+    elif filetype == 'xlsx':
+        df = pd.read_excel(f"{os.path.join(app.config['UPLOAD_FOLDER'], filename)}.{filetype}", engine='openpyxl').head(5)
+        df.columns = df.iloc[0]
+        df = df[1:].reset_index(drop=True)
+    dfz = pd.DataFrame()
+    for col in df.columns:
         # Apply cleaning
-        df2[col] = df1[col].apply(preprocess_text)
-    save_csv(df2, input_file)  
-
-    return df2.head(3).to_html(classes='table table-striped', index=False)
-
+        dfz[col] = df[col].apply(preprocess_text)
+    save_file(dfz, f"categorization-{filename}.{filetype}")  
+    return dfz
 
 
+    
 
 
-def summarization(input_file, model, prompt_id):
+
+
+def summarization(filename, model, prompt_id):
     load_dotenv()
     print('SUMMARIZATION')
-    print('INPUT FILE',input_file)
-    try:
-        df = pd.read_csv(f"{os.path.join(app.config['UPLOAD_FOLDER'], input_file)}.csv")
-        # Get open questions/answers
-        # df1 = df.iloc[2:,[7,8,10,11,12,16,18,20,22,24,25,27,28,29,30,32]]
+   
+    filetype = secure_filename(filename).split(".")[1]
+    filename = secure_filename(filename).split(".")[0]
+    if filetype == 'csv':
+        df = pd.read_csv(f"{os.path.join(app.config['UPLOAD_FOLDER'], filename)}.csv").head(5)
+    elif filetype == 'xlsx':
+        df = pd.read_excel(f"{os.path.join(app.config['UPLOAD_FOLDER'], filename)}.{filetype}", engine='openpyxl').head(5)
+        df.columns = df.iloc[0]
+        df = df[1:].reset_index(drop=True)
 
-        # Normalize text columns to lowercase
-        text_columns = [
-            "QA_Team_Composition", "Vendor_Names", "Manual_QAs_qty", "Automated_QAs_qty",
-            "Developers_qty", "Backend_tools", "Frontend_Automation", "Mobile_Automation",
-            "UnitTest_Automation", "Coverage_Testing_Tools", "Testing_Type", "Test_Management_Tools",
-            "QA_metrics", "QA_Challenges", "QA_Suggestions", "QA_AI_Tools"
-        ]
-        # df.columns = text_columns
-        
-        # Step 4: Summarize each column
-        summarized_data = {}
-        tokens = {}
-        costs = {}
-        for column in df.columns:
-            print("COLUMN", column)
-            combined_text = " ".join(str(item) for item in df[column].dropna() if isinstance(item, str))
-            print('LEN COMB', len(combined_text.splitlines()))
-            if (len(combined_text.splitlines())) > 0:
-                prompt = get_prompt(prompt_id)
-                summarized_data[column], tokens[column], costs[column] = post_to_openai(model, combined_text, prompt['pretext'], prompt['posttext'])
-        print("FINISH REQUESTS")                  
-        # Step 5: Create a summary DataFrame
-        df = pd.DataFrame([summarized_data])
-        df_tokens = pd.DataFrame([tokens])
-        df_costs = pd.DataFrame([costs])
-        save_csv(df, input_file)
-        save_csv(df_tokens, f"tokens-{input_file}") 
-        save_csv(df_costs, f"costs-{input_file}")  
+    summarized_data = {}
+    tokens = {}
+    costs = {}
+    for col in df.columns:
+        print("COLUMN", col)
+        combined_text = " ".join(str(item) for item in df[col].dropna() if isinstance(item, str))
+        print('LEN COMB', len(combined_text.splitlines()))
+        if (len(combined_text.splitlines())) > 0:
+            prompt = get_prompt(prompt_id)
+            summarized_data[col], tokens[col], costs[col] = post_to_openai(model, combined_text, prompt['pretext'], prompt['posttext'])
+    print("FINISH REQUESTS")     
 
-        table_text = df.to_html(classes='table table-striped', index=False)
-        table_tokens = df_tokens.to_html(classes='table table-striped', index=False)
-        table_costs = df_costs.to_html(classes='table table-striped', index=False)
-        return table_text, table_tokens, table_costs
-    except Exception as e:
-        return jsonify({"error": f"Error reading CSV file: {str(e)}"}), 400
+    df_data = pd.DataFrame([summarized_data])
+    df_tokens = pd.DataFrame([tokens])
+    df_costs = pd.DataFrame([costs])
+
+
+    save_file(df_data, f"summarization-{filename}.{filetype}")
+    save_file(df_tokens, f"tokens-{filename}.{filetype}") 
+    save_file(df_costs, f"costs-{filename}.{filetype}")  
+    
+    return df_data, df_tokens, df_costs
+    
    
 
 
 
-def multiple_prompts(input_file, model, prompt_id, custom_prompt_ids, custom_prompts):
+def multiple_prompts(filename, model, prompt_id, custom_prompt_ids, custom_prompts):
     print("Multiple Prompts")
-    print('input_file', input_file)
+    print('input_file', filename)
     print('prompt_id', prompt_id)
     print('promptIDs', custom_prompt_ids)
     # print('custom_prompts', custom_prompts)
 
-    df = pd.read_csv(f"{os.path.join(app.config['UPLOAD_FOLDER'], input_file)}.csv")
-    dfz = pd.DataFrame()
+
+    code_to_name = {
+        '1': 'Summarization',
+        '2': 'Categorization',
+        '0': 'Custom',
+        '-1': 'None'
+    }
+    # Convert codes to names
+    labels = [code_to_name[code] for code in custom_prompt_ids]
+    # Create the DataFrame with a single row
+    df_labels = pd.DataFrame([labels])
+
+    filetype = secure_filename(filename).split(".")[1]
+    filename = secure_filename(filename).split(".")[0]
+    if filetype == 'csv':
+        df = pd.read_csv(f"{os.path.join(app.config['UPLOAD_FOLDER'], filename)}.{filetype}").head(5)
+    elif filetype == 'xlsx':
+        df = pd.read_excel(f"{os.path.join(app.config['UPLOAD_FOLDER'], filename)}.{filetype}", engine='openpyxl').head(5)
+        df.columns = df.iloc[0]
+        df = df[1:].reset_index(drop=True)
+
+
+    columns = df.columns
+    # print(len(columns), columns)
+    
+    dfz_data = pd.DataFrame()
     dfz_tokens = pd.DataFrame()
     dfz_costs = pd.DataFrame()  # output dataframe
-    print('df COLUMNS', df.columns)
-    # print(indexed_mapping)  # Debug
+    
+    # Replace NaN column names with a placeholder like "Unnamed_{index}"
+    df.columns = [f"Unnamed_{i}" if pd.isna(col) else col for i, col in enumerate(df.columns)]
+    for i, prompt in enumerate(custom_prompts):
+        if prompt['column'] == 'nan':
+            prompt['column'] = f'Unnamed_{i}'
+
+    # print(df.columns, custom_prompts)
+    
+
     for i in range(len(custom_prompt_ids)):
         print('custom ID', custom_prompt_ids[i])
         print('loopi', i)
-        summarized_data = {}
+        data = {}
         tokens = {}
-        costs = {}    
-        if custom_prompt_ids[i] == '0':
+        costs = {}
+        
+
+        if custom_prompt_ids[i] == '-1': # None: no processing
+            data[custom_prompts[i]['column']] = df[custom_prompts[i]['column']]
+            tokens[custom_prompts[i]['column']] = 0
+            costs[custom_prompts[i]['column']] = 0
+
+        elif custom_prompt_ids[i] == '0': # custom prompt
             print('Run custom', custom_prompt_ids[i])
             if custom_prompts[i]['column'] in df.columns:
-                summarized_data[custom_prompts[i]['column']],tokens[custom_prompts[i]['column']], costs[custom_prompts[i]['column']] = post_to_openai(model, df[custom_prompts[i]['column']], custom_prompts[i]['custom_value'])
-            df1 = pd.DataFrame([summarized_data])
+                data[custom_prompts[i]['column']], tokens[custom_prompts[i]['column']], costs[custom_prompts[i]['column']] = post_to_openai(model, df[custom_prompts[i]['column']], custom_prompts[i]['custom_value'])
         else:
-
+            
             prompt = get_prompt(custom_prompt_ids[i])
-            if prompt['title'] == 'Summarization': 
-                combined_text = " ".join(str(item) for item in df[custom_prompts[i]['column']].dropna() if isinstance(item, str))
-                if (len(combined_text.splitlines())) > 0:
-                    print('Summarize text')
-                    prompt = get_prompt(prompt_id)
-                    summarized_data[custom_prompts[i]['column']], tokens[custom_prompts[i]['column']], costs[custom_prompts[i]['column']] = post_to_openai(model, combined_text, prompt['pretext'])
-                # Create a summary DataFrame row
-                df1 = pd.DataFrame([summarized_data])
-                df1_tokens = pd.DataFrame([tokens])
-                df1_costs = pd.DataFrame([costs])
+            print('title', prompt['title'])
+            if prompt['title'] == 'Summarization':                
+                combined_text = " ".join(str(item) for item in df[custom_prompts[i]['column']].dropna())
+                if (len(combined_text.splitlines())) > 0:                    
+                    data[custom_prompts[i]['column']], tokens[custom_prompts[i]['column']], costs[custom_prompts[i]['column']] = post_to_openai(model, combined_text, prompt['pretext'])
+                
             elif prompt['title'] == 'Categorization':
-                print('catgorize text')
-                df1 = pd.DataFrame()
                 # Apply cleaning - Create categorized rows
-                df1[custom_prompts[i]['column']] = df[custom_prompts[i]['column']].apply(preprocess_text)
-        dfz = pd.concat([dfz, df1], axis=1, ignore_index=True)
-        dfz_tokens = pd.concat([dfz_tokens, df1_tokens], axis=1, ignore_index=True)
-        dfz_costs = pd.concat([dfz_costs, df1_costs], axis=1, ignore_index=True)
-        
-    return dfz.to_html(classes='table table-striped', index=False), dfz_tokens.to_html(classes='table table-striped', index=False), dfz_costs.to_html(classes='table table-striped', index=False)        
+                data[custom_prompts[i]['column']] = df[custom_prompts[i]['column']].apply(preprocess_text)
+                tokens[custom_prompts[i]['column']] = 0
+                costs[custom_prompts[i]['column']] = 0
+
+        dfz_data = pd.concat([dfz_data, pd.DataFrame([data])], axis=1, ignore_index=True)
+        dfz_tokens = pd.concat([dfz_tokens, pd.DataFrame([tokens])], axis=1, ignore_index=True)
+        dfz_costs = pd.concat([dfz_costs, pd.DataFrame([costs])], axis=1, ignore_index=True)
+    
+    
+    dfz = pd.concat([df_labels, dfz_data], ignore_index=True) 
+    dfz.columns = columns
+    return dfz, dfz_tokens, dfz_costs        
 
 
 
@@ -322,49 +396,66 @@ def result():
     filename = ''
 
     if request.method == 'POST':
-        filename = request.form['filename']
-        if 'confirm' in request.form:
-            # Read chosen model
-            model = request.form['model']
-            # Read the chosen prompt
-            prompt_id = request.form['prompt_id']
-
-            print("prmpt_id", prompt_id)
-            prompt = get_prompt(prompt_id)
-            print("prompt", prompt)
-
-            if prompt['title'] == 'Categorization':
-                result=categorization(filename, model)
-                tokens = ''
-                costs = ''
-            elif prompt['title'] == 'Summarization':
-                result, tokens, costs=summarization(filename, model, prompt_id)
-            elif prompt['title'] == 'Multiple Prompts':
-                custom_prompt_ids = request.form.getlist('custom_prompt_id') if 'custom_prompt_id' in request.form else []
-                custom_prompts = {k: v for k, v in request.form.items() if k.startswith('custom_prompts')}
-                # Convert to an array
-                arr_prompts = [
-                    {"column": re.search(r'\[(.*?)\]', key).group(1), "custom_value": value}
-                    for key, value in custom_prompts.items()
-                ]
-                # print('arr', arr)       
-                result, tokens, costs = multiple_prompts(filename, model, prompt_id, custom_prompt_ids, arr_prompts)
-                
         if 'cancel' in request.form:
             # Go back to the form
             return redirect(url_for('home'))
-        elif 'download' in request.form:
-            filename = filename + '-summary-' + datetime.datetime.now().strftime("%Y%m%d") + '.csv'
-            return send_file(
-                os.path.join(app.config['UPLOAD_FOLDER'], filename),
-                as_attachment=True,  # Set to False if you want to view in the browser
-                download_name=str(filename),
-                mimetype="text/csv"
-            )
+        filename = request.form['filename']
+    
+        if filename != '':    
+            if 'confirm' in request.form:
+                # Read chosen model
+                model = request.form['model']
+                # Read the chosen prompt
+                prompt_id = request.form['prompt_id']
+                print("prmpt_id", prompt_id)
+                prompt = get_prompt(prompt_id)
+                print("prompt", prompt)
+
+                if prompt['title'] == 'Categorization':
+                    data = categorization(filename)
+                    totals_html = ''
+                elif prompt['title'] == 'Summarization':
+                    data, tokens, costs = summarization(filename, model, prompt_id)
+                    df_totals = pd.DataFrame([{
+                        "Output Tokens": tokens.loc[:,:].sum(axis=1)[0],
+                        "cost $USD": costs.loc[:,:].sum(axis=1)[0]
+                    }])
+                    totals_html = df_totals.to_html(classes='table table-striped', index=False)
+        
+                elif prompt['title'] == 'Multiple Prompts':
+                    custom_prompt_ids = request.form.getlist('custom_prompt_id') if 'custom_prompt_id' in request.form else []
+                    custom_prompts = {k: v for k, v in request.form.items() if k.startswith('custom_prompts')}
+                    # Convert to an array
+                    arr_prompts = [
+                        {"column": re.search(r'\[(.*?)\]', key).group(1), "custom_value": value}
+                        for key, value in custom_prompts.items()
+                    ]
+                    # print('arr', arr)       
+                    data, tokens, costs = multiple_prompts(filename, model, prompt_id, custom_prompt_ids, arr_prompts)
+                    df_totals = pd.DataFrame([{
+                        "Output Tokens": tokens.loc[:,:].sum(axis=1)[0],
+                        "cost $USD": costs.loc[:,:].sum(axis=1)[0]
+                    }])
+                    totals_html = df_totals.to_html(classes='table table-striped', index=False)
+                    
+        
+            elif 'download' in request.form:
+                filetype = secure_filename(filename).split(".")[1]
+                filename = secure_filename(filename).split(".")[0]
+                type = str(request.form['type']).lower()
+                filename = f"{type}-{filename}-{datetime.datetime.now().strftime("%Y%m%d")}.{filetype}"
+                return send_file(
+                    os.path.join(app.config['UPLOAD_FOLDER'], filename),
+                    as_attachment=True,  # Set to False if you want to view in the browser
+                    download_name=str(filename),
+                    mimetype="application/xlsx"
+                )
     else:
-        result = 'Bad method request '
-    print('result', result)
-    return render_template('result.html', page_title="Summary Result", result_html=result, tokens_html=tokens, costs_html=costs, filename=filename)
+        data = 'Bad method request '
+
+    data_html = data.to_html(classes='table table-striped', index=False)     
+
+    return render_template('result.html', page_title=prompt['title'], result_html=data_html, totals_html=totals_html, filename=filename)
 
 
 
@@ -419,7 +510,7 @@ def home():
     # GET request renders the upload form
   
     # GET request renders the upload form
-    return render_template('home.html', prompts=read_prompts())
+    return render_template('home.html', google_api_key=GOOGLE_CLIENT_SECRET, google_scope=GOOGLE_SCOPE, google_client_id=GOOGLE_CLIENT_ID, prompts=read_prompts())
 
 
 

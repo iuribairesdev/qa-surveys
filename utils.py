@@ -1,9 +1,11 @@
 
 import os, json
 import datetime
-
+from flask import jsonify
+import pandas as pd
+from werkzeug.utils import secure_filename
 # Allowed Extensions
-ALLOWED_EXTENSIONS = {'csv'}
+ALLOWED_EXTENSIONS = {'csv', 'xlsx'}
 
 SETTINGS_FILE = 'settings.json'
 # Define the folder to save uploaded files
@@ -73,12 +75,18 @@ def validate_string(str1):
 
 
 
-def save_csv(df, filename):
-    # Step 6. Save to  csv file
-    filename = filename + '-summary-' + datetime.datetime.now().strftime("%Y%m%d") + '.csv'
-    filepath = os.path.join(
-        UPLOAD_FOLDER
-        ,filename)
+def save_file(df, filename):
+    filetype = secure_filename(filename).split(".")[1]
+    filename = secure_filename(filename).split(".")[0]
+    filename = f"{filename}-{datetime.datetime.now().strftime("%Y%m%d")}.{filetype}"        
+    filepath = os.path.join(UPLOAD_FOLDER, filename)
     print('FILE', filepath)
-    df.to_csv(filepath, index="False")
+        
+    if filetype == 'csv':
+        # Save to  csv file
+        df.to_csv(filepath, index="False")
+    elif filetype == 'xlsx':
+        # Save to Excel file
+        df.to_excel(filepath, index=False, engine='openpyxl')
 
+    print('File successfully saved!')

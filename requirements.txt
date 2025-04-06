@@ -3,7 +3,9 @@ flask
 flask_session
 hypercorn
 openai==0.28.1
+openpyxl
 pandas
 python-dotenv
+python-magic
 requests
 nltk

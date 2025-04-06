@@ -2,13 +2,42 @@
 {% extends "base.html" %}
 
 {% block content %}
-  <h1 class="mt-4">QA Surveys Automation Tool | Powered by AI</h1>
+  <h1 class="mt-4">QA Survey Automation</h1>
   
   
   
   <form action="{{ url_for('preview')}}" method="POST" enctype="multipart/form-data">
     <div class="mb-3">
       <div class="form-group">
+        <label for="file" class="form-label"><b>Upload Survey</b>:</label>
+        <input type="file" name="file" class="form-control" multiple>
+	    </div>
+    </div>   
+    <div class="mb-3">
+      <label><b>Or select a file from Google Drive</b>:</label><br>
+      <input type="hidden" name="drive_file_id" id="drive_file_id">
+      <button type="button" class="btn btn-outline-primary" onclick="onPickerButtonClicked()">Pick from Drive</button>
+      <div id="drive_file_name" style="margin-top: 10px;"></div>
+    </div>
+    
+
+
+    <div class="mb-3">
+      <div class="form-group">
+        <label for="prompt_id" class="form-label"><br><b>Select a Prompt Template</b></label>
+        <select class="form-control" id="prompt_id" name="prompt_id" required>
+            <option value="" disabled selected>No prompt selected...</option>
+            {% for prompt in prompts %}
+                <option value="{{ prompt.id }}" data-title="{{ prompt.title}}">{{ prompt.title }}</option>
+            {% endfor %}
+        </select>
+        <br>
+        <span class="helper-text">[i]&nbsp;</span><span>Select the prompt to be used for processing.</span>
+      </div>
+    </div>
+   
+    <div class="mb-3" id="model_group" style="display: none;">
+      <div class="form-group" >
         <label for="model" class="form-label"><br><b>Model:</b></label>
         <select class="form-control" id="model" name="model" required>
           <!-- Add options for the models, with one of them being the current setting -->
@@ -25,27 +54,31 @@
         <a href="https://platform.openai.com/docs/models">https://platform.openai.com/docs/models</a>
       </div>
     </div>
-    <div class="mb-3">
-      <div class="form-group">
-        <label for="prompt_id" class="form-label"><br><b>Select a Prompt Template</b></label>
-        <select class="form-control" id="prompt_id" name="prompt_id" required>
-            <option value="" disabled selected>No prompt selected...</option>
-            {% for prompt in prompts %}
-                <option value="{{ prompt.id }}">{{ prompt.title }}</option>
-            {% endfor %}
-        </select>
-        <br>
-        <span class="helper-text">[i]&nbsp;</span><span>Select the prompt to be used for processing.</span>
-      </div>
-    </div>
-
-    <div class="mb-3">
-      <div class="form-group">
-        <label for="file" class="form-label"><b>Upload Survey</b>:</label>
-        <input type="file" name="file" class="form-control" multiple>
-	    </div>
-    </div>
     
     <button type="submit" class="btn btn-primary">Submit</button>
   </form>
+
+  <script>
+    $(document).ready(function () {
+      const promptSelect = document.getElementById("prompt_id");
+      const modelGroup = document.getElementById("model_group");
+
+      function checkPrompt() {
+        const selectedOption = promptSelect.options[promptSelect.selectedIndex];
+        const title = selectedOption ? selectedOption.dataset.title : "";
+        if (title === "Categorization")  {
+          modelGroup.style.display = "none";
+        } else {
+          modelGroup.style.display = "block";
+        }
+      }
+  
+      // Initial check
+      //checkPrompt();
+  
+      // On change
+      $('#prompt_id').on('change', checkPrompt);
+    });
+  </script>
+
 {% endblock %}

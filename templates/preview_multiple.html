@@ -68,10 +68,11 @@
                               <option value="{{prompts[0].id}}" selected>{{prompts[0].title}}</option>
                               {% for p in prompts %}
                                 {% if p.title != "Multiple Prompts" and p.title != "Summarization": %} 
-                                  <option value="{{ prompt.id }}">{{ p.title }}</option>
+                                  <option value="{{ p.id }}">{{ p.title }}</option>
                                 {% endif %}
                               {% endfor %}                          
                               <option value="0">Custom</option>
+                              <option value="-1">None</option>
                             </select>                            
                         
                       </div>
