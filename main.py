@@ -1,12 +1,14 @@
 import os, re
-from flask import Flask, flash, session, request, jsonify, redirect, send_file, render_template, url_for
+from flask import Flask, flash, session, request, jsonify, redirect, send_file, render_template, url_for, g
 from flask_session import Session
 import pandas as pd
 from werkzeug.utils import secure_filename
 
 from dotenv import load_dotenv
 
-import magic
+
+
+import secrets
 
 
 from auth import is_logged_in, login, logout, init_oauth, auth_bp, google_login,  auth_callback
@@ -47,8 +49,8 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 PROMPT_FILE = 'prompts.json'
 
 GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
-GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
-GOOGLE_SCOPE = os.environ.get('GOOGLE_SCOPE')
+GOOGLE_APP_ID = os.environ.get('GOOGLE_APP_ID')
+GOOGLE_DEVELOPER_KEY = os.environ.get('GOOGLE_DEVELOPER_KEY')
 
 # Download necessary NLTK data
 nltk.download('stopwords')
@@ -498,6 +500,20 @@ app.add_url_rule('/auth_callback', 'auth_callback', auth_callback, methods=['GET
 app.add_url_rule('/logout', 'logout', logout)
 
 
+@app.before_request
+def generate_nonce():
+    g.nonce = secrets.token_urlsafe(16)
+    
+@app.after_request
+def add_csp_headers(response):
+    response.headers['Content-Security-Policy'] = (
+        f"script-src 'self' 'nonce-{g.nonce}' https://apis.google.com https://www.gstatic.com https://accounts.google.com https://code.jquery.com https://cdn.jsdelivr.net;"
+ 
+    )
+    return response
+
+
+
 
 # Route to handle the home page and file uploads
 @app.route('/', methods=['GET', 'POST'])
@@ -510,7 +526,7 @@ def home():
     # GET request renders the upload form
   
     # GET request renders the upload form
-    return render_template('home.html', google_api_key=GOOGLE_CLIENT_SECRET, google_scope=GOOGLE_SCOPE, google_client_id=GOOGLE_CLIENT_ID, prompts=read_prompts())
+    return render_template('home.html', nonce=g.nonce, GOOGLE_CLIENT_ID=GOOGLE_CLIENT_ID, GOOGLE_DEVELOPER_KEY=GOOGLE_DEVELOPER_KEY, GOOGLE_APP_ID=GOOGLE_APP_ID, prompts=read_prompts())
 
 
 
