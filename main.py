@@ -506,10 +506,21 @@ def generate_nonce():
     
 @app.after_request
 def add_csp_headers(response):
-    response.headers['Content-Security-Policy'] = (
-        f"script-src 'self' 'nonce-{g.nonce}' https://apis.google.com https://www.gstatic.com https://accounts.google.com https://code.jquery.com https://cdn.jsdelivr.net;"
- 
+    csp = (
+        "default-src 'self'; ",
+        f"script-src 'self' 'nonce-{g.nonce}' https://apis.google.com https://www.gstatic.com "
+        "https://accounts.google.com https://code.jquery.com https://cdn.jsdelivr.net; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src https://fonts.gstatic.com; "
+        "connect-src 'self' https://www.googleapis.com https://oauth2.googleapis.com; "
+        "img-src 'self' data: https://ssl.gstatic.com https://www.gstatic.com; "
+        "frame-src https://accounts.google.com https://content.googleapis.com "
+        "https://docs.google.com https://drive.google.com; "
+        "object-src 'none'; "
+        "base-uri 'self'; "
+        "frame-ancestors 'self';"
     )
+    response.headers['Content-Security-Policy'] = app
     return response
 
 
