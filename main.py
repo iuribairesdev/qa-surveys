@@ -50,7 +50,7 @@ PROMPT_FILE = 'prompts.json'
 
 GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
 GOOGLE_APP_ID = os.environ.get('GOOGLE_APP_ID')
-GOOGLE_DEVELOPER_KEY = os.environ.get('GOOGLE_DEVELOPER_KEY')
+GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY')
 
 # Download necessary NLTK data
 nltk.download('stopwords')
@@ -537,7 +537,7 @@ def home():
     # GET request renders the upload form
   
     # GET request renders the upload form
-    return render_template('home.html', nonce=g.nonce, GOOGLE_CLIENT_ID=GOOGLE_CLIENT_ID, GOOGLE_DEVELOPER_KEY=GOOGLE_DEVELOPER_KEY, GOOGLE_APP_ID=GOOGLE_APP_ID, prompts=read_prompts())
+    return render_template('home.html', nonce=g.nonce, GOOGLE_API_KEY=GOOGLE_API_KEY, GOOGLE_CLIENT_ID=GOOGLE_CLIENT_ID, GOOGLE_APP_ID=GOOGLE_APP_ID, prompts=read_prompts())
 
 
 
