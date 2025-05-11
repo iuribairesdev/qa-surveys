@@ -1,15 +1,17 @@
 import os, re
-from flask import Flask, flash, session, request, jsonify, redirect, send_file, render_template, url_for, g
+from flask import Flask, session, request, jsonify, redirect, send_file, render_template, url_for, g
 from flask_session import Session
 import pandas as pd
 from werkzeug.utils import secure_filename
 
 from dotenv import load_dotenv
-
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseDownload
 
 
 import secrets
-
+import io
 
 from auth import is_logged_in, login, logout, init_oauth, auth_bp, google_login,  auth_callback
 from prompts import get_prompt, edit_prompt, create_prompt, read_prompts, delete_prompt, prompts_page
@@ -26,8 +28,7 @@ import re
 import nltk
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
-import requests
-from io import BytesIO
+
 
 # Initialize Flask application
 app = Flask(__name__)
@@ -49,34 +50,57 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 PROMPT_FILE = 'prompts.json'
 
 GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
+GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
 GOOGLE_APP_ID = os.environ.get('GOOGLE_APP_ID')
 GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY')
+REDIRECT_URI = "http://localhost:8080/oauth2callback"
 
 # Download necessary NLTK data
 nltk.download('stopwords')
 nltk.download('wordnet')
 nltk.download('punkt_tab')
 
+def get_drive_service(access_token):
+    creds = Credentials(token=access_token)
+    service = build('drive',
+                     'v3', credentials=creds)
+    return service
 
-def extract_file_id(drive_link):
-    """
-    Extracts the file ID from a standard Google Drive URL.
-    """
-    match = re.search(r'/d/([a-zA-Z0-9_-]+)', drive_link)
-    if match:
-        return match.group(1)
-    return None
 
-def download_file_from_drive(file_id):
-    """
-    Downloads the file from Google Drive using the file ID.
-    """
-    download_url = f"https://drive.google.com/uc?export=download&id={file_id}"
-    response = requests.get(download_url)
-    if response.status_code == 200:
-        return BytesIO(response.content)
+
+def download_file_from_drive(service, file_id):
+    # Get file metadata
+    file_metadata = service.files().get(fileId=file_id, fields="name, mimeType").execute()
+    file_name = file_metadata['name']
+    mime_type = file_metadata['mimeType']
+
+    # Prepare the correct request
+    if mime_type == 'application/vnd.google-apps.spreadsheet':
+        # Export as Excel
+        request = service.files().export_media(
+            fileId=file_id,
+            mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        file_name += '.xlsx'
+    elif mime_type.startswith('application/vnd.google-apps.'):
+        raise ValueError(f"Unsupported Google Docs format for export: {mime_type}")
     else:
-        raise Exception("Failed to download file from Google Drive.")
+        # Regular binary file (like uploaded .xlsx)
+        request = service.files().get_media(fileId=file_id)
+
+    # Download the file
+    fh = io.BytesIO()
+    downloader = MediaIoBaseDownload(fh, request)
+    done = False
+    while not done:
+        status, done = downloader.next_chunk()
+
+    # Save locally or return the file-like object
+    file_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{file_name}")   
+    with open(file_path, 'wb') as f:
+        f.write(fh.getvalue())
+    
+    return f"{file_name}"
 
 
 # Route to display the file preview
@@ -87,39 +111,54 @@ def preview():
         return redirect(url_for('login'))
     
     if request.method == 'POST':
-    
-        # Check if the post request has the file part
-        if 'file' not in request.files:
-            return jsonify({"error": "No file part"}), 400        
+        file_id = request.form['google_drive_file_id']
+        access_token = request.form['access_token']
+        if file_id:
+            if not file_id or not access_token:
+                return jsonify({"error": "Missing Google Drive file ID or access token."}), 400                 
+            service = get_drive_service(access_token)
+            file_path = download_file_from_drive(service, file_id)
+            filename = secure_filename(file_path).split(".")[0]
+            filetype = secure_filename(file_path).split(".")[1]
+                    
+            print('FILE', file_path)
+                
+
         else:
-            file = request.files['file']
-            # If no file is selected
-            if file.filename == '':
-                return jsonify({"error": "No selected file"}), 400
 
-            if not allowed_file(file.filename):
-                return jsonify({"error": "Please, upload CSV or XLSX files only!"}), 400
 
-            # If file is valid and has allowed extension
-            print('FILE', file.filename)
-            if file and allowed_file(file.filename):
-                if not os.path.exists(app.config['UPLOAD_FOLDER']):
-                    os.makedirs(app.config['UPLOAD_FOLDER'])   
+            # Check if the post request has the file part
+            if 'file' not in request.files:
+                return jsonify({"error": "No file part"}), 400        
+            else:
+                file = request.files['file']
+                # If no file is selected
+                if file.filename == '':
+                    return jsonify({"error": "No selected file"}), 400
 
-                # df, filename = file_to_df(file)
-                filetype = secure_filename(file.filename).split(".")[1]
-                filename = secure_filename(file.filename).split(".")[0]
-                file.save(f"{os.path.join(UPLOAD_FOLDER, filename)}.{filetype}")
-                print('File successfully uploaded!')        
+                if not allowed_file(file.filename):
+                    return jsonify({"error": "Please, upload CSV or XLSX files only!"}), 400
+
+                # If file is valid and has allowed extension
+                print('FILE', file.filename)
+                if file and allowed_file(file.filename):
+                    if not os.path.exists(app.config['UPLOAD_FOLDER']):
+                        os.makedirs(app.config['UPLOAD_FOLDER'])   
+
+                    # df, filename = file_to_df(file)
+                    filetype = secure_filename(file.filename).split(".")[1]
+                    filename = secure_filename(file.filename).split(".")[0]
+                    file.save(f"{os.path.join(UPLOAD_FOLDER, filename)}.{filetype}")
+                    print('File successfully uploaded!')        
 
 
         # Read CSV content
         if filetype == 'csv':
-            df = pd.read_csv(f"{os.path.join(app.config['UPLOAD_FOLDER'], filename)}.csv").head(5)
+            df = pd.read_csv(f"{os.path.join(app.config['UPLOAD_FOLDER'], filename)}.{filetype}").head(5)
         elif filetype == 'xlsx':
             df = pd.read_excel(f"{os.path.join(app.config['UPLOAD_FOLDER'], filename)}.{filetype}", engine='openpyxl').head(5)
-            df.columns = df.iloc[0]
-            df = df[1:].reset_index(drop=True)
+            # df.columns = df.iloc[0]
+            # df = df[1:].reset_index(drop=True)
 
         # Convert dataframe to HTML table
         table_html = df.to_html(classes='table table-striped', index=False)
@@ -508,7 +547,7 @@ def generate_nonce():
 def add_csp_headers(response):
     csp = (
         "default-src 'self'; ",
-        f"script-src 'self' 'nonce-{g.nonce}' https://apis.google.com https://www.gstatic.com "
+        f"script-src 'self' '{g.nonce}' https://apis.google.com https://www.gstatic.com "
         "https://accounts.google.com https://code.jquery.com https://cdn.jsdelivr.net; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "font-src https://fonts.gstatic.com; "

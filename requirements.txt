@@ -1,6 +1,12 @@
 Authlib
 flask
 flask_session
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+google-api-python-client
+google-auth
+google-auth-oauthlib
 hypercorn
 openai==0.28.1
 openpyxl

@@ -15,8 +15,14 @@
     </div>   
     <div class="mb-3">
       <label><b>Or select a file from Google Drive </b>:</label><br>
-      <input type="hidden" name="google_drive_file_id" id="google_drive_file_id">
-      <button type="button" id="pick-from-drive" class="btn btn-outline-primary">Pick from Drive</button>
+      <input type="hidden" name="access_token" id="access_token" value="">
+      <input type="hidden" name="file_name" id="file_name" value="">
+      <input type="hidden" name="file_type" id="file_type" value="">
+      <input type="hidden" name="google_drive_file_id" id="google_drive_file_id" value="">
+      <button type="button" class="btn btn-outline-primary" id="pick-from-drive">
+        <i class="fab fa-google-drive me-2"></i> Pick from Google Drive
+      </button>
+
       <div id="drive_file_name" style="margin-top: 10px;"></div>
     </div>
     
@@ -122,8 +128,9 @@
             }
 
             accessToken = tokenResponse.access_token;
+            document.getElementById('access_token').value = tokenResponse.access_token;
             console.log('Successfully obtained access token:', accessToken);
-
+            
             // Now call the function that initializes your Picker or Drive logic
             onAccessTokenReceived();
         }
@@ -172,10 +179,23 @@
   }
 
   function pickerCallback(data) {
+      gfile = null;
       if (data.action === google.picker.Action.PICKED) {
-          const file = data.docs[0];
-          console.log('Picked file:', file);
-          // Proceed with whatever you want to do with the file
+         gfile = data.docs[0];
+          console.log('Picked file:', gfile);
+          if (gfile.mimeType === "application/vnd.google-apps.spreadsheet" 
+            || gfile.mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            || gfile.mimeType === "text/csv") {
+            document.getElementById('google_drive_file_id').value = gfile.id;
+            document.getElementById('file_name').value = gfile.name;
+            document.getElementById('file_type').value = gfile.mimeType;
+            document.getElementById('drive_file_name').innerText = "Selected file: " + gfile.name;
+          } else {
+              document.getElementById('drive_file_name').innerText = "Only XLSX or CSV files are allowed.";
+              document.getElementById('drive_file_name').style = "color: red;";
+              alert('Only XLSX or CSV files are allowed.');
+              return;
+          }
       }
   }
 
