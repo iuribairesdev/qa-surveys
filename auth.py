@@ -22,8 +22,7 @@ def init_oauth(app):
         client_id=app.config["GOOGLE_CLIENT_ID"],
         client_secret=app.config["GOOGLE_CLIENT_SECRET"],
         server_metadata_url=app.config["GOOGLE_DISCOVERY_URL"],
-        client_kwargs={"scope": "openid email profile"},
-        
+        client_kwargs={"scope": "openid email profile"}       
     )
 
 
@@ -31,7 +30,7 @@ def init_oauth(app):
 #app.add_url_rule('/google_login', 'google_login', methods=['GET', 'POST'])
 @auth_bp.route('/google_login', methods=['GET', 'POST'])
 def google_login():
-    return oauth.google.authorize_redirect(url_for("auth_callback", _external=True))
+    return oauth.google.authorize_redirect(url_for("auth_callback"))
 
 #app.add_url_rule('/auth_callback', 'auth_callback', methods=['GET', 'POST'])
 @auth_bp.route('/auth_callback', methods=['GET', 'POST'])
